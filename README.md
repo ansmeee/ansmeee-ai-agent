@@ -6,6 +6,7 @@
 - Go 版本：1.25
 
 # 目录结构
+```
 ansmeee-ai-agent/
 ├── cmd/
 │   └── server/
@@ -51,6 +52,7 @@ ansmeee-ai-agent/
 ├── docker-compose.yaml
 ├── go.mod
 └── README.md
+```
 
 # 核心依赖
 - github.com/tmc/langchaingo # LangChain Go SDK
