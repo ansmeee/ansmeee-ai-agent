@@ -57,11 +57,28 @@
   .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.08); }
   .card .title { font-size: 16px; font-weight: 600; }
   .card .desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .card .meta { font-size: 11px; color: var(--text-secondary); display: flex; justify-content: space-between; }
-  .card .card-actions { display: flex; gap: 6px; justify-content: flex-end; }
-  .card .card-actions button { font-size: 11px; padding: 4px 10px; border-radius: 6px; cursor: pointer; border: 1px solid var(--border); background: var(--surface); }
-  .card .card-actions .btn-edit:hover { border-color: var(--accent); color: var(--accent); }
-  .card .card-actions .btn-delete:hover { border-color: #dc2626; color: #dc2626; }
+  .card .meta { font-size: 11px; color: var(--text-secondary); display: flex; justify-content: space-between; align-items: center; }
+  .card .card-footer { display: flex; justify-content: flex-end; position: relative; }
+  .card .menu-btn {
+    width: 28px; height: 28px; border: none; background: none; cursor: pointer;
+    border-radius: 6px; color: var(--text-secondary); font-size: 16px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; letter-spacing: 1px;
+    transition: background .1s, color .1s;
+  }
+  .card .menu-btn:hover { background: #f3f4f6; color: var(--text); }
+  .card .dropdown {
+    display: none; position: absolute; bottom: 32px; right: 0;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.1); min-width: 100px; z-index: 20; overflow: hidden;
+  }
+  .card .dropdown.show { display: block; }
+  .card .dropdown-item {
+    display: block; width: 100%; padding: 8px 14px; font-size: 13px; border: none;
+    background: none; cursor: pointer; text-align: left; color: var(--text);
+  }
+  .card .dropdown-item:hover { background: #f3f4f6; }
+  .card .dropdown-item.danger { color: #dc2626; }
+  .card .dropdown-item.danger:hover { background: #fef2f2; }
   .empty { text-align: center; padding: 40px 0; color: var(--text-secondary); }
   .empty .icon { font-size: 40px; margin-bottom: 8px; }
 
@@ -169,18 +186,28 @@ function logout() {
 }
 
 updateUserMenu();
-if (!token) { window.location.href = '/login'; }
+if (!token) {
+  window.location.replace('/login');
+  throw new Error('redirect');
+}
 
 const authHeaders = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
 
+let redirecting = false;
 async function authFetch(url, opts = {}) {
   opts.headers = { ...authHeaders, ...(opts.headers || {}) };
   const r = await fetch(url, opts);
-  if (r.status === 401) { window.location.href = '/login'; }
+  if (r.status === 401) {
+    if (!redirecting) {
+      redirecting = true;
+      localStorage.removeItem('token');
+      window.location.replace('/login');
+    }
+    throw new Error('unauthorized');
+  }
   return r;
 }
 
-let editingId = null;
 let defaultAgentId = '';
 let allAgents = [];
 
@@ -190,15 +217,37 @@ window.onload = async () => {
 };
 
 document.getElementById('agentGrid').addEventListener('click', e => {
-  const btn = e.target.closest('button');
+  // Handle dropdown menu button
+  const menuBtn = e.target.closest('.menu-btn');
+  if (menuBtn) {
+    e.stopPropagation();
+    const dropdown = menuBtn.nextElementSibling;
+    // Close all other dropdowns first
+    document.querySelectorAll('.card .dropdown.show').forEach(d => { if (d !== dropdown) d.classList.remove('show'); });
+    dropdown.classList.toggle('show');
+    return;
+  }
+  // Handle dropdown item
+  const item = e.target.closest('.dropdown-item');
+  if (item) {
+    e.stopPropagation();
+    const action = item.dataset.action;
+    const id = item.dataset.id;
+    item.closest('.dropdown').classList.remove('show');
+    if (action === 'edit') openDetail(id);
+    else if (action === 'delete') delAgent(id, item.dataset.title);
+    return;
+  }
+  // Handle card click -> chat
   const card = e.target.closest('.card');
-  const el = btn || card;
-  if (!el || !el.dataset.action) return;
-  const action = el.dataset.action;
-  const id = el.dataset.id;
-  if (action === 'chat') startChat(id);
-  else if (action === 'edit') openEdit(id, el.dataset.title, el.dataset.desc, el.dataset.prompt);
-  else if (action === 'delete') delAgent(id, el.dataset.title);
+  if (card && card.dataset.id) {
+    startChat(card.dataset.id);
+  }
+});
+
+// Close dropdowns on outside click
+document.addEventListener('click', () => {
+  document.querySelectorAll('.card .dropdown.show').forEach(d => d.classList.remove('show'));
 });
 
 function autoResize(el) {
@@ -233,20 +282,10 @@ async function loadAgents() {
 }
 
 function openCreate() {
-  editingId = null;
   document.getElementById('modalTitle').textContent = '新增 Agent';
   document.getElementById('agentTitle').value = '';
   document.getElementById('agentDesc').value = '';
   document.getElementById('agentPrompt').value = '';
-  document.getElementById('modal').classList.add('show');
-}
-
-function openEdit(id, title, desc, prompt) {
-  editingId = id;
-  document.getElementById('modalTitle').textContent = '编辑 Agent';
-  document.getElementById('agentTitle').value = title;
-  document.getElementById('agentDesc').value = desc;
-  document.getElementById('agentPrompt').value = prompt;
   document.getElementById('modal').classList.add('show');
 }
 
@@ -258,23 +297,25 @@ async function saveAgent() {
   const prompt = document.getElementById('agentPrompt').value.trim();
   if (!title || !prompt) { alert('请填写名称和 Prompt'); return; }
 
-  const method = editingId ? 'PUT' : 'POST';
-  const url = editingId ? `${apiBase}/agents/${editingId}` : `${apiBase}/agents`;
-  const r = await authFetch(url, {
-    method, headers: authHeaders,
-    body: JSON.stringify({ title, description, prompt })
-  });
-  const d = await r.json();
-  if (d.code === 0) { closeModal(); loadAgents(); }
-  else { alert(d.message || '操作失败'); }
+  try {
+    const r = await authFetch(apiBase + '/agents', {
+      method: 'POST', headers: authHeaders,
+      body: JSON.stringify({ title, description, prompt })
+    });
+    const d = await r.json();
+    if (d.code === 0) { closeModal(); loadAgents(); }
+    else { alert(d.message || '操作失败'); }
+  } catch(e) {}
 }
 
 async function delAgent(id, title) {
   if (!confirm(`确认删除 "${title}"？`)) return;
-  const r = await authFetch(`${apiBase}/agents/${id}`, { method: 'DELETE' });
-  const d = await r.json();
-  if (d.code === 0 || d.data?.deleted) { loadAgents(); }
-  else { alert(d.message || '删除失败'); }
+  try {
+    const r = await authFetch(`${apiBase}/agents/${id}`, { method: 'DELETE' });
+    const d = await r.json();
+    if (d.code === 0 || d.data?.deleted) { loadAgents(); }
+    else { alert(d.message || '删除失败'); }
+  } catch(e) {}
 }
 
 function filterAgents() {
@@ -297,26 +338,31 @@ function renderAgents() {
   }
   empty.style.display = 'none';
   grid.innerHTML = agents.map(a => `
-    <div class="card" data-action="chat" data-id="${a.id}">
+    <div class="card" data-id="${a.id}">
       <div class="title">${esc(a.title)}</div>
       <div class="desc">${esc(a.description || '暂无描述')}</div>
       <div class="meta">
         <span>ID: ${a.id.slice(0, 8)}</span>
         <span>更新: ${fmtDate(a.updated_at)}</span>
       </div>
-      <div class="card-actions">
-        <button class="btn-edit" data-action="edit" data-id="${a.id}" data-title="${escAttr(a.title)}" data-desc="${escAttr(a.description||'')}" data-prompt="${escAttr(a.prompt||'')}">编辑</button>
-        <button class="btn-delete" data-action="delete" data-id="${a.id}" data-title="${escAttr(a.title)}">删除</button>
+      <div class="card-footer">
+        <button class="menu-btn" title="操作">···</button>
+        <div class="dropdown">
+          <button class="dropdown-item" data-action="edit" data-id="${a.id}">编辑</button>
+          <button class="dropdown-item danger" data-action="delete" data-id="${a.id}" data-title="${escAttr(a.title)}">删除</button>
+        </div>
       </div>
     </div>
   `).join('');
 }
 
-function startChat(agentId) { window.location.href = `/chat?agent_id=${agentId}`; }
+function startChat(id) { window.location.href = `/chat?agent_id=${id}`; }
+function openDetail(id) { window.location.href = `/agent?id=${id}`; }
 
 function esc(s) { const el = document.createElement('span'); el.textContent = s; return el.innerHTML; }
 function escAttr(s) { return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function fmtDate(s) { if (!s) return ''; return new Date(s).toLocaleDateString(); }
 </script>
+
 </body>
 </html>

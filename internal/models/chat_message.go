@@ -4,8 +4,10 @@ import "time"
 
 // Message role constants.
 const (
-	RoleUser      int8 = 1
-	RoleAssistant int8 = 2
+	RoleUser              int8 = 1
+	RoleAssistant         int8 = 2
+	RoleTool              int8 = 3
+	RoleAssistantToolCall int8 = 4
 )
 
 // ChatMessage represents the ai_chat_session_history table.

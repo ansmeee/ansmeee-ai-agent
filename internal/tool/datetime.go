@@ -17,6 +17,21 @@ func (d *DateTime) Description() string {
 	return "Get the current date and time. Pass \"now\" for current time, \"date\" for current date, \"weekday\" for day of week, or \"timestamp\" for Unix timestamp."
 }
 
+// Parameters returns the JSON Schema for the tool's input.
+func (d *DateTime) Parameters() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"format": map[string]any{
+				"type":        "string",
+				"description": "Output format: \"now\" (RFC3339), \"date\" (YYYY-MM-DD), \"weekday\", or \"timestamp\" (Unix)",
+				"enum":        []string{"now", "date", "weekday", "timestamp"},
+			},
+		},
+		"required": []string{"format"},
+	}
+}
+
 // Call returns date/time info based on the input.
 func (d *DateTime) Call(ctx context.Context, input string) (string, error) {
 	now := time.Now()

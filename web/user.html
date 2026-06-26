@@ -40,6 +40,9 @@
   .btn { font-size: 13px; padding: 8px 20px; border-radius: 8px; cursor: pointer; border: none; font-weight: 500; }
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-primary:hover { background: var(--accent-hover); }
+  .model-section { margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+  .model-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .model-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; color: var(--text); }
   .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #fff; padding: 10px 24px; border-radius: 10px; font-size: 14px; z-index: 200; opacity: 0; transition: opacity .2s; pointer-events: none; }
   .toast.show { opacity: 1; }
 </style>
@@ -63,22 +66,48 @@
     <!-- 模型配置 -->
     <div class="panel active" id="panel-model">
       <h2>模型配置</h2>
-      <div class="form-group">
-        <label>Model</label>
-        <input id="userModel" placeholder="例如: deepseek-chat">
-        <div class="hint">大模型名称，如 deepseek-chat、gpt-4o 等</div>
+
+      <!-- 对话模型 -->
+      <div class="model-section">
+        <h3>对话模型</h3>
+        <div class="form-group">
+          <label>Model</label>
+          <input id="chatModel" placeholder="例如: deepseek-chat">
+          <div class="hint">对话模型名称，如 deepseek-chat、gpt-4o 等</div>
+        </div>
+        <div class="form-group">
+          <label>Base URL</label>
+          <input id="chatBaseURL" placeholder="例如: https://api.deepseek.com">
+          <div class="hint">API 端点地址</div>
+        </div>
+        <div class="form-group">
+          <label>Token</label>
+          <input id="chatToken" type="password" placeholder="API Token">
+          <div class="hint">API 访问密钥</div>
+        </div>
+        <button class="btn btn-primary" onclick="saveModelConfig(1)">保存对话模型配置</button>
       </div>
-      <div class="form-group">
-        <label>Base URL</label>
-        <input id="userBaseURL" placeholder="例如: https://api.deepseek.com">
-        <div class="hint">API 端点地址</div>
+
+      <!-- Embedding 模型 -->
+      <div class="model-section">
+        <h3>Embedding 模型</h3>
+        <div class="form-group">
+          <label>Model</label>
+          <input id="embeddingModel" placeholder="例如: text-embedding-v3">
+          <div class="hint">Embedding 模型名称，如 text-embedding-v3、text-embedding-ada-002 等</div>
+        </div>
+        <div class="form-group">
+          <label>Base URL</label>
+          <input id="embeddingBaseURL" placeholder="例如: https://api.deepseek.com">
+          <div class="hint">API 端点地址</div>
+        </div>
+        <div class="form-group">
+          <label>Token</label>
+          <input id="embeddingToken" type="password" placeholder="API Token">
+          <div class="hint">API 访问密钥</div>
+        </div>
+        <button class="btn btn-primary" onclick="saveModelConfig(2)">保存 Embedding 模型配置</button>
       </div>
-      <div class="form-group">
-        <label>Token</label>
-        <input id="userToken" type="password" placeholder="API Token">
-        <div class="hint">API 访问密钥</div>
-      </div>
-      <button class="btn btn-primary" onclick="saveModelConfig()">保存配置</button>
     </div>
 
     <!-- 关于 -->
@@ -95,16 +124,27 @@
 <div class="toast" id="toast"></div>
 
 <script>
-if (!localStorage.getItem('token')) { window.location.href = '/login'; }
+if (!localStorage.getItem('token')) {
+  window.location.replace('/login');
+  throw new Error('redirect');
+}
 
 const apiBase = '/api/v1';
 const token = localStorage.getItem('token') || '';
 const authHeaders = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
 
+let redirecting = false;
 async function authFetch(url, opts = {}) {
   opts.headers = { ...authHeaders, ...(opts.headers || {}) };
   const r = await fetch(url, opts);
-  if (r.status === 401) { window.location.href = '/login'; }
+  if (r.status === 401) {
+    if (!redirecting) {
+      redirecting = true;
+      localStorage.removeItem('token');
+      window.location.replace('/login');
+    }
+    throw new Error('unauthorized');
+  }
   return r;
 }
 
@@ -124,27 +164,43 @@ window.onload = async () => {
     const r = await authFetch(apiBase + '/user/model');
     const d = await r.json();
     if (d.data) {
-      document.getElementById('userModel').value = d.data.model || '';
-      document.getElementById('userBaseURL').value = d.data.base_url || '';
-      document.getElementById('userToken').value = d.data.token || '';
+      if (d.data.chat) {
+        document.getElementById('chatModel').value = d.data.chat.model || '';
+        document.getElementById('chatBaseURL').value = d.data.chat.base_url || '';
+        document.getElementById('chatToken').value = d.data.chat.token || '';
+      }
+      if (d.data.embedding) {
+        document.getElementById('embeddingModel').value = d.data.embedding.model || '';
+        document.getElementById('embeddingBaseURL').value = d.data.embedding.base_url || '';
+        document.getElementById('embeddingToken').value = d.data.embedding.token || '';
+      }
     }
   } catch(e) {}
 };
 
-async function saveModelConfig() {
-  const model = document.getElementById('userModel').value.trim();
-  const base_url = document.getElementById('userBaseURL').value.trim();
-  const token = document.getElementById('userToken').value.trim();
+async function saveModelConfig(modelType) {
+  let model, base_url, token;
+  if (modelType === 1) {
+    model = document.getElementById('chatModel').value.trim();
+    base_url = document.getElementById('chatBaseURL').value.trim();
+    token = document.getElementById('chatToken').value.trim();
+  } else {
+    model = document.getElementById('embeddingModel').value.trim();
+    base_url = document.getElementById('embeddingBaseURL').value.trim();
+    token = document.getElementById('embeddingToken').value.trim();
+  }
   if (!model || !token) { showToast('请填写 Model 和 Token'); return; }
 
-  const r = await authFetch(apiBase + '/user/model', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, base_url, token })
-  });
-  const d = await r.json();
-  if (d.code === 0) { showToast('保存成功'); }
-  else { showToast(d.message || '保存失败'); }
+  try {
+    const r = await authFetch(apiBase + '/user/model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model_type: modelType, model, base_url, token })
+    });
+    const d = await r.json();
+    if (d.code === 0) { showToast('保存成功'); }
+    else { showToast(d.message || '保存失败'); }
+  } catch(e) {}
 }
 
 function showToast(msg) {

@@ -21,6 +21,20 @@ func (c *Calculator) Description() string {
 	return "Evaluate a mathematical expression. Supports +, -, *, /, %, ^ (power), sqrt, abs. Example: \"2 + 3 * 4\""
 }
 
+// Parameters returns the JSON Schema for the tool's input.
+func (c *Calculator) Parameters() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"expression": map[string]any{
+				"type":        "string",
+				"description": "Mathematical expression to evaluate, e.g. \"2 + 3 * 4\"",
+			},
+		},
+		"required": []string{"expression"},
+	}
+}
+
 // Call evaluates the given math expression.
 func (c *Calculator) Call(ctx context.Context, input string) (string, error) {
 	expr, err := parser.ParseExpr(input)

@@ -37,6 +37,7 @@ func Setup(cfg *config.Config, logger *zap.Logger, mem memory.SessionStore, engi
 	r.StaticFile("/", "./web/agents.html")
 	r.StaticFile("/chat", "./web/index.html")
 	r.StaticFile("/agents", "./web/agents.html")
+	r.StaticFile("/agent", "./web/agent.html")
 	r.StaticFile("/user", "./web/user.html")
 	r.StaticFile("/login", "./web/login.html")
 
@@ -55,6 +56,7 @@ func Setup(cfg *config.Config, logger *zap.Logger, mem memory.SessionStore, engi
 		v1.POST("/sessions", chatHandler.CreateSession)
 		v1.GET("/sessions", chatHandler.ListSessions)
 		v1.GET("/tools", toolHandler.Handle)
+		v1.GET("/tools/:name/schema", toolHandler.Schema)
 		v1.GET("/health", handler.HealthCheck)
 		v1.GET("/user/model", modelConfigHandler.Get)
 		v1.POST("/user/model", modelConfigHandler.Save)

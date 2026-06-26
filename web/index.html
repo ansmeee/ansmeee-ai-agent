@@ -92,6 +92,44 @@
   .msg.user .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 6px; }
   .msg.assistant .bubble { background: none; border: none; box-shadow: none; padding: 0; border-radius: 0; }
   .msg.tool .bubble { background: #fefce8; border: 1px solid #fde68a; border-bottom-left-radius: 6px; font-size: 12px; color: var(--text-secondary); }
+
+  /* ——— tool call blocks ——— */
+  .tool-block {
+    border: 1px solid var(--border); border-radius: 10px; margin: 8px 0;
+    background: #f8fafc; overflow: hidden; font-size: 13px;
+  }
+  .tool-block-header {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    cursor: pointer; user-select: none; transition: background .1s;
+  }
+  .tool-block-header:hover { background: #f1f5f9; }
+  .tool-block-header .tool-icon { font-size: 14px; }
+  .tool-block-header .tool-name { font-weight: 600; color: var(--text); }
+  .tool-block-header .tool-status {
+    margin-left: auto; font-size: 11px; padding: 2px 8px;
+    border-radius: 10px; font-weight: 500;
+  }
+  .tool-block-header .tool-status.running { background: #dbeafe; color: #2563eb; }
+  .tool-block-header .tool-status.success { background: #dcfce7; color: #16a34a; }
+  .tool-block-header .tool-status.error { background: #fee2e2; color: #dc2626; }
+  .tool-block-header .toggle-arrow { font-size: 11px; color: var(--text-secondary); transition: transform .15s; }
+  .tool-block.expanded .toggle-arrow { transform: rotate(90deg); }
+  .tool-block-body { display: none; padding: 0 12px 10px; }
+  .tool-block.expanded .tool-block-body { display: block; }
+  .tool-block-body .tool-section { margin-top: 6px; }
+  .tool-block-body .tool-section-title { font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 3px; }
+  .tool-block-body pre {
+    background: #1e1e2e; color: #e2e8f0; border-radius: 6px; padding: 8px 10px;
+    overflow-x: auto; font-size: 12px; line-height: 1.4; white-space: pre-wrap; word-break: break-all;
+  }
+  .thinking-indicator {
+    display: flex; align-items: center; gap: 6px; padding: 4px 0;
+    font-size: 12px; color: var(--text-secondary);
+  }
+  .thinking-indicator .dots::after {
+    content: ''; animation: dots 1.2s steps(3, end) infinite;
+  }
+  @keyframes dots { 0% { content: '.'; } 33% { content: '..'; } 66% { content: '...'; } }
   .msg.streaming .bubble::after { content: '▊'; animation: blink 1s infinite; color: var(--accent); }
   @keyframes blink { 0%,50% { opacity:1; } 51%,100% { opacity:0; } }
 
@@ -249,7 +287,10 @@ function updateUserMenu() {
   }
 }
 updateUserMenu();
-if (!token) { window.location.href = '/login'; }
+if (!token) {
+  window.location.replace('/login');
+  throw new Error('redirect');
+}
 
 document.getElementById('avatarBtn').addEventListener('click', e => {
   e.stopPropagation();
@@ -264,10 +305,18 @@ function logout() {
 
 const authHeaders = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
 
+let redirecting = false;
 async function authFetch(url, opts = {}) {
   opts.headers = { ...authHeaders, ...(opts.headers || {}) };
   const r = await fetch(url, opts);
-  if (r.status === 401) { window.location.href = '/login'; }
+  if (r.status === 401) {
+    if (!redirecting) {
+      redirecting = true;
+      localStorage.removeItem('token');
+      window.location.replace('/login');
+    }
+    throw new Error('unauthorized');
+  }
   return r;
 }
 
@@ -321,7 +370,8 @@ window.onload = async () => {
     }
   });
 
-  document.getElementById('sessionId').addEventListener('click', () => {
+  const sessionIdEl = document.getElementById('sessionId');
+  if (sessionIdEl) sessionIdEl.addEventListener('click', () => {
     if (sessionId) navigator.clipboard.writeText(sessionId);
   });
 };
@@ -596,31 +646,50 @@ async function sendStream(msg) {
     let buf = '';
 
     function dispatchEvent(event, data) {
+      let parsed = null;
+      try { parsed = JSON.parse(data); } catch(e) { parsed = null; }
+
       switch (event) {
         case 'session':
-          sessionId = data;
-          updateURL(sessionId);
+          if (parsed && parsed.session_id) {
+            sessionId = parsed.session_id;
+            updateURL(sessionId);
+          } else {
+            sessionId = data;
+            updateURL(data);
+          }
           break;
-        case 'chunk':
-          fullText += data;
+        case 'thinking':
+          showThinking(parsed ? parsed.iteration : 0);
+          break;
+        case 'tool_start':
+          if (parsed) addToolBlock(parsed);
+          break;
+        case 'tool_end':
+          if (parsed) updateToolBlock(parsed);
+          break;
+        case 'chunk': {
+          hideThinking();
+          const content = parsed ? parsed.content : data;
+          fullText += content;
           bubble.innerHTML = typeof marked !== 'undefined' ? marked.parse(fullText.replace(/\n{3,}/g, '\n\n')) : escapeHtml(fullText);
           main.scrollTop = main.scrollHeight;
           break;
+        }
         case 'done':
-          console.log('[SSE] stream done, data:', data);
-          try {
-            const d = JSON.parse(data);
-            if (d.session_id) {
-              sessionId = d.session_id;
-              updateURL(d.session_id);
-            }
-          } catch(e) {}
+          hideThinking();
+          if (parsed && parsed.session_id) {
+            sessionId = parsed.session_id;
+            updateURL(parsed.session_id);
+          }
           loadSessions();
           break;
-        case 'error':
-          console.error('[SSE] stream error:', data);
-          streamErr = data;
+        case 'error': {
+          hideThinking();
+          const errMsg = parsed ? parsed.message : data;
+          streamErr = errMsg;
           break;
+        }
       }
     }
 
@@ -651,9 +720,8 @@ async function sendStream(msg) {
     }
 
     el.classList.remove('streaming');
-    if (streamErr) { showError(streamErr); bubble.innerHTML = renderContent('assistant', fullText || '(响应错误)'); }
+    if (streamErr) { showError(streamErr); if (!fullText) bubble.innerHTML = renderContent('assistant', '(响应错误)'); }
     if (!fullText && !streamErr) { bubble.innerHTML = '(空响应)'; }
-    console.log('[SSE] final output:', fullText);
   } catch(e) {
     el.classList.remove('streaming');
     bubble.innerHTML = renderContent('assistant', fullText || '(连接中断)');
@@ -662,6 +730,85 @@ async function sendStream(msg) {
     streamingMsgEl = null;
     btn.disabled = false;
   }
+}
+
+function showThinking(iteration) {
+  const main = document.getElementById('messages');
+  let indicator = document.getElementById('thinkingIndicator');
+  if (!indicator) {
+    indicator = document.createElement('div');
+    indicator.id = 'thinkingIndicator';
+    indicator.className = 'thinking-indicator';
+    main.appendChild(indicator);
+  }
+  indicator.innerHTML = `<span>思考中</span><span class="dots"></span>`;
+  main.scrollTop = main.scrollHeight;
+}
+
+function hideThinking() {
+  const indicator = document.getElementById('thinkingIndicator');
+  if (indicator) indicator.remove();
+}
+
+function addToolBlock(data) {
+  const main = document.getElementById('messages');
+  hideThinking();
+  const block = document.createElement('div');
+  block.className = 'tool-block';
+  block.id = 'tool-' + data.tool_call_id;
+  let argsDisplay = '';
+  try {
+    const parsed = typeof data.arguments === 'string' ? JSON.parse(data.arguments) : data.arguments;
+    argsDisplay = JSON.stringify(parsed, null, 2);
+  } catch(e) {
+    argsDisplay = typeof data.arguments === 'string' ? data.arguments : JSON.stringify(data.arguments);
+  }
+  block.innerHTML = `
+    <div class="tool-block-header" onclick="this.parentElement.classList.toggle('expanded')">
+      <span class="tool-icon">🔧</span>
+      <span class="tool-name">${escapeHtml(data.name)}</span>
+      <span class="tool-status running">执行中</span>
+      <span class="toggle-arrow">▶</span>
+    </div>
+    <div class="tool-block-body">
+      <div class="tool-section">
+        <div class="tool-section-title">输入参数</div>
+        <pre>${escapeHtml(argsDisplay)}</pre>
+      </div>
+      <div class="tool-section tool-result-section" style="display:none">
+        <div class="tool-section-title">返回结果</div>
+        <pre class="tool-result-pre"></pre>
+      </div>
+    </div>`;
+  main.appendChild(block);
+  main.scrollTop = main.scrollHeight;
+}
+
+function updateToolBlock(data) {
+  const block = document.getElementById('tool-' + data.tool_call_id);
+  if (!block) return;
+  const status = block.querySelector('.tool-status');
+  if (data.success) {
+    status.textContent = '成功';
+    status.className = 'tool-status success';
+  } else {
+    status.textContent = '失败';
+    status.className = 'tool-status error';
+  }
+  const resultSection = block.querySelector('.tool-result-section');
+  const resultPre = block.querySelector('.tool-result-pre');
+  if (resultSection && resultPre) {
+    let resultDisplay = '';
+    try {
+      const parsed = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
+      resultDisplay = JSON.stringify(parsed, null, 2);
+    } catch(e) {
+      resultDisplay = typeof data.result === 'string' ? data.result : JSON.stringify(data.result);
+    }
+    resultPre.textContent = resultDisplay;
+    resultSection.style.display = 'block';
+  }
+  block.classList.add('expanded');
 }
 
 function renderContent(role, text) {
@@ -675,6 +822,68 @@ function renderContent(role, text) {
 
 function addMessage(role, text) {
   const main = document.getElementById('messages');
+
+  // Handle tool call messages (role=assistant_tool_call or role=4)
+  if (role === 'assistant_tool_call' || role === 4) {
+    try {
+      const data = JSON.parse(text);
+      const toolCalls = data.tool_calls || [];
+      for (const tc of toolCalls) {
+        addToolBlock({
+          tool_call_id: tc.id || ('hist-' + Math.random().toString(36).slice(2, 8)),
+          name: tc.name,
+          arguments: tc.arguments
+        });
+      }
+    } catch(e) {}
+    return;
+  }
+
+  // Handle tool result messages (role=tool or role=3)
+  if (role === 'tool' || role === 3) {
+    try {
+      const data = JSON.parse(text);
+      const blockId = 'tool-' + data.tool_call_id;
+      const block = document.getElementById(blockId);
+      if (block) {
+        updateToolBlock({
+          tool_call_id: data.tool_call_id,
+          name: data.name,
+          result: data.result,
+          success: !data.result?.startsWith?.('Error:')
+        });
+      } else {
+        // No matching tool_start block — render standalone
+        const div = document.createElement('div');
+        div.className = 'tool-block expanded';
+        let resultDisplay = data.result || text;
+        div.innerHTML = `
+          <div class="tool-block-header" onclick="this.parentElement.classList.toggle('expanded')">
+            <span class="tool-icon">🔧</span>
+            <span class="tool-name">${escapeHtml(data.name || 'tool')}</span>
+            <span class="tool-status success">完成</span>
+            <span class="toggle-arrow">▶</span>
+          </div>
+          <div class="tool-block-body">
+            <div class="tool-section">
+              <div class="tool-section-title">返回结果</div>
+              <pre>${escapeHtml(resultDisplay)}</pre>
+            </div>
+          </div>`;
+        main.appendChild(div);
+      }
+    } catch(e) {
+      // Fallback: render as plain tool bubble
+      const div = document.createElement('div');
+      div.className = 'msg tool';
+      div.innerHTML = `<div class="role">Tool</div><div class="bubble">${escapeHtml(text)}</div>`;
+      main.appendChild(div);
+    }
+    main.scrollTop = main.scrollHeight;
+    return;
+  }
+
+  // Standard user/assistant messages
   const div = document.createElement('div');
   div.className = 'msg ' + role;
   const roleLabel = role === 'user' ? 'You' : role === 'assistant' ? 'Assistant' : 'Tool';

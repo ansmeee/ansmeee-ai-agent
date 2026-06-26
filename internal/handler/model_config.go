@@ -3,6 +3,7 @@ package handler
 import (
 	"ansmeee-ai-agent/internal/llm"
 	"ansmeee-ai-agent/internal/middleware"
+	"ansmeee-ai-agent/internal/models"
 	"ansmeee-ai-agent/pkg/response"
 	"github.com/gin-gonic/gin"
 )
@@ -17,20 +18,35 @@ func NewModelConfigHandler(store *llm.ModelConfigStore) *ModelConfigHandler {
 	return &ModelConfigHandler{store: store}
 }
 
-// Get returns the model config for the current user.
+// Get returns the model configs for the current user.
 func (h *ModelConfigHandler) Get(c *gin.Context) {
-	cfg, err := h.store.GetByUser(c.GetInt64(middleware.CtxUserID)) // default user_id=1
+	userID := c.GetInt64(middleware.CtxUserID)
+	cfgs, err := h.store.GetByUser(userID)
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return
 	}
-	response.OK(c, cfg)
+
+	result := gin.H{
+		"chat":      nil,
+		"embedding": nil,
+	}
+	for _, cfg := range cfgs {
+		switch cfg.ModelType {
+		case models.ModelTypeChat:
+			result["chat"] = cfg
+		case models.ModelTypeEmbedding:
+			result["embedding"] = cfg
+		}
+	}
+	response.OK(c, result)
 }
 
 type modelConfigRequest struct {
-	Model   string `json:"model"`
-	BaseURL string `json:"base_url"`
-	Token   string `json:"token"`
+	ModelType int8   `json:"model_type"`
+	Model     string `json:"model"`
+	BaseURL   string `json:"base_url"`
+	Token     string `json:"token"`
 }
 
 // Save upserts the model config for the current user.
@@ -44,7 +60,13 @@ func (h *ModelConfigHandler) Save(c *gin.Context) {
 		response.BadRequest(c, "model and token are required")
 		return
 	}
-	cfg, err := h.store.Save(1, req.Model, req.BaseURL, req.Token)
+	if req.ModelType != models.ModelTypeChat && req.ModelType != models.ModelTypeEmbedding {
+		response.BadRequest(c, "model_type must be 1 (chat) or 2 (embedding)")
+		return
+	}
+
+	userID := c.GetInt64(middleware.CtxUserID)
+	cfg, err := h.store.Save(userID, req.ModelType, req.Model, req.BaseURL, req.Token)
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return

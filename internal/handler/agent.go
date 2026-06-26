@@ -21,9 +21,13 @@ func NewAgentHandler(store *agent.AgentStore) *AgentHandler {
 }
 
 type agentRequest struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Prompt      string `json:"prompt"`
+	Title         string                   `json:"title"`
+	Description   string                   `json:"description"`
+	Prompt        string                   `json:"prompt"`
+	Tools         []string                 `json:"tools"`
+	ModelConfig   *models.AgentModelConfig `json:"model_config"`
+	MaxIterations int8                     `json:"max_iterations"`
+	Status        *int8                    `json:"status"`
 }
 
 func (h *AgentHandler) userID(c *gin.Context) int64 {
@@ -66,7 +70,8 @@ func (h *AgentHandler) Create(c *gin.Context) {
 		response.BadRequest(c, "prompt is required")
 		return
 	}
-	a, err := h.store.Create(h.userID(c), req.Title, req.Description, req.Prompt)
+	a, err := h.store.Create(h.userID(c), req.Title, req.Description, req.Prompt,
+		req.Tools, req.ModelConfig, req.MaxIterations)
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return
@@ -76,12 +81,12 @@ func (h *AgentHandler) Create(c *gin.Context) {
 
 // Update modifies an existing agent.
 func (h *AgentHandler) Update(c *gin.Context) {
-	var req agentRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var raw map[string]any
+	if err := c.ShouldBindJSON(&raw); err != nil {
 		response.BadRequest(c, "invalid request body")
 		return
 	}
-	a, err := h.store.Update(c.Param("id"), req.Title, req.Description, req.Prompt)
+	a, err := h.store.Update(c.Param("id"), raw)
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return

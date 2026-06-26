@@ -77,11 +77,18 @@ func main() {
 	reg.Register(&tool.Calculator{})
 	reg.Register(&tool.DateTime{})
 	reg.Register(&tool.WebSearch{})
+	reg.Register(&tool.Weather{})
 	logger.Info("tools registered", zap.Int("count", len(reg.List())))
 
 	// Initialize agent engine.
 	cb := agent.NewCallback(logger)
-	engine := agent.New(llmProvider, reg, sessionStore, cb)
+	engine := agent.New(llmProvider, reg, sessionStore, cb,
+		agent.WithMaxIter(cfg.Agent.MaxIterations),
+		agent.WithToolTimeout(cfg.Agent.ToolTimeout),
+		agent.WithMaxOutputLength(cfg.Agent.MaxOutputLength),
+		agent.WithParallelToolCalls(cfg.Agent.ParallelToolCalls),
+		agent.WithMaxContextMessages(cfg.Agent.MaxContextMessages),
+	)
 	logger.Info("agent engine initialized")
 
 	// Initialize model config store.

@@ -75,9 +75,9 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	response.OK(c, gin.H{
-		"token":    token,
-		"user_id":  user.UUID,
-		"email":    user.Email,
+		"token":   token,
+		"user_id": user.UUID,
+		"email":   user.Email,
 	})
 }
 
@@ -116,9 +116,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	response.OK(c, gin.H{
-		"token":    token,
-		"user_id":  user.UUID,
-		"email":    user.Email,
+		"token":   token,
+		"user_id": user.UUID,
+		"email":   user.Email,
 	})
 }
 
@@ -134,7 +134,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 
 func generateJWT(userID int64, userUUID string) (string, error) {
 	claims := jwt.MapClaims{
-		"user_id":  userID,
+		"user_id":   userID,
 		"user_uuid": userUUID,
 		"exp":       time.Now().Add(7 * 24 * time.Hour).Unix(),
 		"iat":       time.Now().Unix(),

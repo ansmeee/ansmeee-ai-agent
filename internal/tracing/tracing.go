@@ -13,9 +13,9 @@ import (
 type contextKey string
 
 const (
-	keyTraceID contextKey = "trace_id"
-	keySpanID  contextKey = "span_id"
-	headerTraceID        = "X-Trace-ID"
+	keyTraceID    contextKey = "trace_id"
+	keySpanID     contextKey = "span_id"
+	headerTraceID            = "X-Trace-ID"
 )
 
 // Trace holds trace identifiers.

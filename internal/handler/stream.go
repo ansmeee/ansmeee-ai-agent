@@ -1,9 +1,9 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"ansmeee-ai-agent/internal/agent"
 	"ansmeee-ai-agent/internal/llm"
@@ -14,6 +14,31 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
+// SSE data types for type-safe JSON serialization.
+type sseChunkData struct {
+	Content string `json:"content"`
+}
+type sseThinkingData struct {
+	Iteration int `json:"iteration"`
+}
+type sseToolStartData struct {
+	ToolCallID string          `json:"tool_call_id"`
+	Name       string          `json:"name"`
+	Arguments  json.RawMessage `json:"arguments"`
+}
+type sseToolEndData struct {
+	ToolCallID string          `json:"tool_call_id"`
+	Name       string          `json:"name"`
+	Result     json.RawMessage `json:"result"`
+	Success    bool            `json:"success"`
+}
+type sseSessionData struct {
+	SessionID string `json:"session_id"`
+}
+type sseErrorData struct {
+	Message string `json:"message"`
+}
 
 // StreamHandler handles SSE streaming chat requests.
 type StreamHandler struct {
@@ -28,13 +53,26 @@ func NewStreamHandler(engine *agent.Engine, mem memory.SessionStore, agentStore 
 	return &StreamHandler{engine: engine, mem: mem, agentStore: agentStore, modelConfigStore: modelConfigStore}
 }
 
-func (h *StreamHandler) resolvePrompt(agentID string) string {
-	if agentID != "" && h.agentStore != nil {
-		if a, err := h.agentStore.Get(agentID); err == nil {
-			return a.Prompt
-		}
+func (h *StreamHandler) resolveAgentConfig(agentID string) (*agent.AgentConfig, error) {
+	if agentID == "" || h.agentStore == nil {
+		return nil, nil
 	}
-	return ""
+	a, err := h.agentStore.Get(agentID)
+	if err != nil {
+		return nil, nil
+	}
+	if a.Status == models.AgentStatusDisabled {
+		return nil, fmt.Errorf("agent %q is disabled", agentID)
+	}
+	cfg := &agent.AgentConfig{
+		Prompt:        a.Prompt,
+		Tools:         []string(a.Tools),
+		MaxIterations: int(a.MaxIterations),
+	}
+	if a.ModelConfig != nil {
+		cfg.ModelConfig = a.ModelConfig
+	}
+	return cfg, nil
 }
 
 // Handle processes a streaming chat request via SSE.
@@ -72,51 +110,66 @@ func (h *StreamHandler) Handle(c *gin.Context) {
 		_ = h.mem.SetAgent(c.Request.Context(), sessionID, req.AgentID, userID)
 	}
 
+	// Resolve agent config (includes status check).
+	agentCfg, err := h.resolveAgentConfig(req.AgentID)
+	if err != nil {
+		writeSSEJSON(c.Writer, flusher, "error", sseErrorData{Message: err.Error()})
+		return
+	}
+
 	// Send session_id as first event.
-	writeSSE(c.Writer, flusher, "session", sessionID)
+	writeSSEJSON(c.Writer, flusher, "session", sseSessionData{SessionID: sessionID})
 
-	// Process stream.
-	done := make(chan struct{})
-	defer func() {
-		select {
-		case <-done:
-		default:
-			writeSSE(c.Writer, flusher, "error", "stream ended unexpectedly")
-			flusher.Flush()
-		}
-	}()
-
+	// Resolve user model config.
 	var modelCfg *models.ModelConfig
 	if h.modelConfigStore != nil {
-		modelCfg, _ = h.modelConfigStore.GetByUser(userID)
+		modelCfg, _ = h.modelConfigStore.GetByUserAndType(userID, models.ModelTypeChat)
 	}
-	ch := h.engine.ProcessStream(c.Request.Context(), sessionID, req.Message, h.resolvePrompt(req.AgentID), modelCfg, userID)
+
+	// Process stream.
+	ch := h.engine.ProcessStream(c.Request.Context(), sessionID, req.Message, agentCfg, modelCfg, userID)
 
 	for evt := range ch {
 		switch evt.Type {
 		case "chunk":
-			writeSSE(c.Writer, flusher, "chunk", evt.Content)
+			writeSSEJSON(c.Writer, flusher, "chunk", sseChunkData{Content: evt.Content})
+		case "thinking":
+			writeSSEJSON(c.Writer, flusher, "thinking", sseThinkingData{Iteration: evt.Iteration})
+		case "tool_start":
+			writeSSEJSON(c.Writer, flusher, "tool_start", sseToolStartData{
+				ToolCallID: evt.ToolCallID,
+				Name:       evt.ToolName,
+				Arguments:  ensureJSON(evt.Arguments),
+			})
+		case "tool_end":
+			writeSSEJSON(c.Writer, flusher, "tool_end", sseToolEndData{
+				ToolCallID: evt.ToolCallID,
+				Name:       evt.ToolName,
+				Result:     ensureJSON(evt.Result),
+				Success:    evt.Success,
+			})
 		case "done":
-			writeSSE(c.Writer, flusher, "done", fmt.Sprintf(`{"session_id":"%s"}`, evt.Content))
-			flusher.Flush()
-			close(done)
+			writeSSEJSON(c.Writer, flusher, "done", sseSessionData{SessionID: evt.Content})
 			return
 		case "error":
-			writeSSE(c.Writer, flusher, "error", evt.Error.Error())
-			flusher.Flush()
-			close(done)
+			writeSSEJSON(c.Writer, flusher, "error", sseErrorData{Message: evt.Error.Error()})
 			return
 		}
 	}
 }
 
-func writeSSE(w http.ResponseWriter, flusher http.Flusher, event, data string) {
-	if event != "" {
-		fmt.Fprintf(w, "event: %s\n", event)
-	}
-	for _, line := range strings.Split(data, "\n") {
-		fmt.Fprintf(w, "data: %s\n", line)
-	}
-	fmt.Fprint(w, "\n")
+// writeSSEJSON serializes data as JSON and writes it as an SSE event.
+func writeSSEJSON(w http.ResponseWriter, flusher http.Flusher, event string, data any) {
+	b, _ := json.Marshal(data)
+	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, b)
 	flusher.Flush()
+}
+
+// ensureJSON ensures the string is valid JSON; if not, wraps it as a JSON string.
+func ensureJSON(s string) json.RawMessage {
+	if json.Valid([]byte(s)) {
+		return json.RawMessage(s)
+	}
+	b, _ := json.Marshal(s)
+	return json.RawMessage(b)
 }

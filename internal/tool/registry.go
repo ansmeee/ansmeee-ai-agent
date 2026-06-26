@@ -77,6 +77,38 @@ func (r *Registry) Call(ctx context.Context, name, input string) (string, error)
 
 // ToolInfo is a lightweight tool descriptor for API responses.
 type ToolInfo struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  map[string]any `json:"parameters,omitempty"`
+}
+
+// ToolWithSchema extends tools.Tool with parameter schema support.
+type ToolWithSchema interface {
+	tools.Tool
+	Parameters() map[string]any
+}
+
+// GetByNames returns tools matching the given names, preserving order.
+func (r *Registry) GetByNames(names []string) []tools.Tool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	result := make([]tools.Tool, 0, len(names))
+	for _, name := range names {
+		if t, ok := r.tools[name]; ok {
+			result = append(result, t)
+		}
+	}
+	return result
+}
+
+// GetSchema returns the parameter schema for a tool, or nil if unavailable.
+func (r *Registry) GetSchema(name string) map[string]any {
+	t, ok := r.Get(name)
+	if !ok {
+		return nil
+	}
+	if ts, ok := t.(ToolWithSchema); ok {
+		return ts.Parameters()
+	}
+	return nil
 }

@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"net/http"
+
 	"ansmeee-ai-agent/internal/tool"
 	"ansmeee-ai-agent/pkg/response"
 	"github.com/gin-gonic/gin"
@@ -23,4 +25,15 @@ func (h *ToolHandler) Handle(c *gin.Context) {
 		tools = []tool.ToolInfo{}
 	}
 	response.OK(c, gin.H{"tools": tools})
+}
+
+// Schema returns the parameter schema for a specific tool.
+func (h *ToolHandler) Schema(c *gin.Context) {
+	name := c.Param("name")
+	schema := h.registry.GetSchema(name)
+	if schema == nil {
+		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "tool not found")
+		return
+	}
+	response.OK(c, schema)
 }

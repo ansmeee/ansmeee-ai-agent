@@ -1,12 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(go version *)",
-      "Bash(go mod *)",
       "Bash(go build *)",
       "Bash(go vet *)",
-      "Bash(node *)",
-      "Bash(go get *)"
+      "Bash(go test *)",
+      "Bash(grep -E \"\\\\.go$\")",
+      "Bash(go fmt *)"
     ]
   }
 }

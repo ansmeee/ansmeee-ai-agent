@@ -25,12 +25,35 @@ func genMsgUUID() string {
 	return uuid.New().String()
 }
 
+func roleStringToInt(role string) int8 {
+	switch role {
+	case "assistant":
+		return models.RoleAssistant
+	case "tool":
+		return models.RoleTool
+	case "assistant_tool_call":
+		return models.RoleAssistantToolCall
+	default:
+		return models.RoleUser
+	}
+}
+
+func roleIntToString(role int8) string {
+	switch role {
+	case models.RoleAssistant:
+		return "assistant"
+	case models.RoleTool:
+		return "tool"
+	case models.RoleAssistantToolCall:
+		return "assistant_tool_call"
+	default:
+		return "user"
+	}
+}
+
 // AddMessage appends a message to a session.
 func (s *MySQLStore) AddMessage(ctx context.Context, sessionID string, msg Message, userID int64) error {
-	role := models.RoleUser
-	if msg.Role == "assistant" {
-		role = models.RoleAssistant
-	}
+	role := roleStringToInt(msg.Role)
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&models.ChatMessage{
 			SessionUUID: sessionID,
@@ -63,11 +86,7 @@ func (s *MySQLStore) History(ctx context.Context, sessionID string) ([]Message, 
 	}
 	result := make([]Message, len(rows))
 	for i, r := range rows {
-		role := "user"
-		if r.Role == models.RoleAssistant {
-			role = "assistant"
-		}
-		result[i] = Message{Role: role, Content: r.Content}
+		result[i] = Message{Role: roleIntToString(r.Role), Content: r.Content}
 	}
 	return result, nil
 }

@@ -16,6 +16,20 @@ func (w *WebSearch) Description() string {
 	return "Search the web for information. Provide a search query string."
 }
 
+// Parameters returns the JSON Schema for the tool's input.
+func (w *WebSearch) Parameters() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"query": map[string]any{
+				"type":        "string",
+				"description": "Search query string",
+			},
+		},
+		"required": []string{"query"},
+	}
+}
+
 // Call is a placeholder that indicates the search query was received.
 func (w *WebSearch) Call(ctx context.Context, input string) (string, error) {
 	if input == "" {

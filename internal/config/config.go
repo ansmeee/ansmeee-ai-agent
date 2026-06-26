@@ -16,6 +16,8 @@ type Config struct {
 	MySQL  MySQLConfig  `mapstructure:"mysql"`
 	Redis  RedisConfig  `mapstructure:"redis"`
 	Memory MemoryConfig `mapstructure:"memory"`
+	Milvus Milvus       `mapstructure:"milvus"`
+	Agent  AgentConfig  `mapstructure:"agent"`
 }
 
 // ServerConfig is the HTTP server configuration.
@@ -33,6 +35,15 @@ type LLMConfig struct {
 	Temperature float64       `mapstructure:"temperature"`
 	MaxTokens   int           `mapstructure:"max_tokens"`
 	Timeout     time.Duration `mapstructure:"timeout"`
+}
+
+type Milvus struct {
+	Address       string `mapstructure:"address"`
+	Username      string `mapstructure:"username"`
+	Password      string `mapstructure:"password"`
+	DBName        string `mapstructure:"dbname"`
+	Collection    string `mapstructure:"collection"`
+	TextMaxLength int64  `mapstructure:"text_max_length"`
 }
 
 // MySQLNodeConfig is a single MySQL node configuration.
@@ -75,6 +86,15 @@ type MemoryConfig struct {
 	MaxMessages int           `mapstructure:"max_messages"`
 }
 
+// AgentConfig is the Agent engine configuration.
+type AgentConfig struct {
+	MaxIterations      int           `mapstructure:"max_iterations"`
+	ToolTimeout        time.Duration `mapstructure:"tool_timeout"`
+	MaxOutputLength    int           `mapstructure:"max_output_length"`
+	ParallelToolCalls  bool          `mapstructure:"parallel_tool_calls"`
+	MaxContextMessages int           `mapstructure:"max_context_messages"`
+}
+
 // envReplacer maps viper keys to env vars: llm.api_key → LLM_API_KEY.
 type envReplacer struct{}
 
@@ -90,6 +110,8 @@ func Load(path string) (*Config, error) {
 	v := viper.NewWithOptions(viper.EnvKeyReplacer(envReplacer{}))
 	v.SetConfigFile(path)
 	v.AutomaticEnv()
+
+	v.SetDefault("agent.parallel_tool_calls", true)
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("read config file: %w", err)
@@ -134,6 +156,19 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Memory.MaxMessages == 0 {
 		c.Memory.MaxMessages = 100
+	}
+
+	if c.Agent.MaxIterations == 0 {
+		c.Agent.MaxIterations = 5
+	}
+	if c.Agent.ToolTimeout == 0 {
+		c.Agent.ToolTimeout = 30 * time.Second
+	}
+	if c.Agent.MaxOutputLength == 0 {
+		c.Agent.MaxOutputLength = 4096
+	}
+	if c.Agent.MaxContextMessages == 0 {
+		c.Agent.MaxContextMessages = 50
 	}
 }
 

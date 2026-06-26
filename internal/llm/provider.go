@@ -51,18 +51,59 @@ type ChatResult struct {
 	ToolCalls []llms.ToolCall
 }
 
+// ChatOption allows callers to override model parameters per call.
+type ChatOption func(*chatOptions)
+
+type chatOptions struct {
+	temperature *float64
+	maxTokens   *int
+	topP        *float64
+}
+
+// WithTemperature overrides the temperature for a single Chat call.
+func WithTemperature(t float64) ChatOption {
+	return func(o *chatOptions) { o.temperature = &t }
+}
+
+// WithChatMaxTokens overrides max tokens for a single Chat call.
+func WithChatMaxTokens(n int) ChatOption {
+	return func(o *chatOptions) { o.maxTokens = &n }
+}
+
+// WithTopP overrides top_p for a single Chat call.
+func WithTopP(p float64) ChatOption {
+	return func(o *chatOptions) { o.topP = &p }
+}
+
 // Chat sends messages and returns the full result including any tool calls.
-func (p *Provider) Chat(ctx context.Context, messages []MessageContent, toolList []tools.Tool) (*ChatResult, error) {
-	msgs := toLLMMessages(messages)
-	opts := []llms.CallOption{
-		llms.WithTemperature(p.cfg.Temperature),
-		llms.WithMaxTokens(p.cfg.MaxTokens),
-	}
-	if len(toolList) > 0 {
-		opts = append(opts, llms.WithTools(toLLMTools(toolList)))
+func (p *Provider) Chat(ctx context.Context, messages []MessageContent, toolList []tools.Tool, opts ...ChatOption) (*ChatResult, error) {
+	co := &chatOptions{}
+	for _, o := range opts {
+		o(co)
 	}
 
-	resp, err := p.model.GenerateContent(ctx, msgs, opts...)
+	temp := p.cfg.Temperature
+	if co.temperature != nil {
+		temp = *co.temperature
+	}
+	maxTk := p.cfg.MaxTokens
+	if co.maxTokens != nil {
+		maxTk = *co.maxTokens
+	}
+
+	msgs := toLLMMessages(messages)
+	callOpts := []llms.CallOption{
+		llms.WithTemperature(temp),
+		llms.WithMaxTokens(maxTk),
+	}
+	if co.topP != nil {
+		callOpts = append(callOpts, llms.WithTopP(*co.topP))
+	}
+	if len(toolList) > 0 {
+		callOpts = append(callOpts, llms.WithTools(toLLMTools(toolList)))
+	}
+
+	resp, err := p.model.GenerateContent(ctx, msgs, callOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("generate content: %w", err)
 	}
@@ -127,6 +168,12 @@ const (
 	RoleTool      Role = "tool"
 )
 
+// ToolWithSchema extends tools.Tool with parameter schema support.
+type ToolWithSchema interface {
+	tools.Tool
+	Parameters() map[string]any
+}
+
 func toLLMMessages(messages []MessageContent) []llms.MessageContent {
 	result := make([]llms.MessageContent, len(messages))
 	for i, m := range messages {
@@ -156,12 +203,16 @@ func toLLMMessages(messages []MessageContent) []llms.MessageContent {
 func toLLMTools(toolList []tools.Tool) []llms.Tool {
 	result := make([]llms.Tool, len(toolList))
 	for i, t := range toolList {
+		fd := &llms.FunctionDefinition{
+			Name:        t.Name(),
+			Description: t.Description(),
+		}
+		if ts, ok := t.(ToolWithSchema); ok {
+			fd.Parameters = ts.Parameters()
+		}
 		result[i] = llms.Tool{
-			Type: "function",
-			Function: &llms.FunctionDefinition{
-				Name:        t.Name(),
-				Description: t.Description(),
-			},
+			Type:     "function",
+			Function: fd,
 		}
 	}
 	return result

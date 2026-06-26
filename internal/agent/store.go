@@ -33,7 +33,8 @@ func (s *AgentStore) EnsureDefault(userID int64) error {
 		return nil
 	}
 	_, err := s.Create(userID, "默认助手", "通用 AI 助手",
-		"直接回答用户问题。当需要获取实时信息或进行数学计算时使用工具。评估工具结果后再回复。不要做自我介绍。")
+		"直接回答用户问题。当需要获取实时信息或进行数学计算时使用工具。评估工具结果后再回复。不要做自我介绍。",
+		[]string{"calculator", "datetime"}, nil, 0)
 	return err
 }
 
@@ -54,13 +55,25 @@ func (s *AgentStore) Get(id string) (*models.Agent, error) {
 }
 
 // Create adds a new agent for a user.
-func (s *AgentStore) Create(userID int64, title, description, prompt string) (*models.Agent, error) {
+func (s *AgentStore) Create(userID int64, title, description, prompt string,
+	tools []string, modelConfig *models.AgentModelConfig, maxIterations int8,
+) (*models.Agent, error) {
 	a := models.Agent{
-		UUID:        genUUID(),
-		UserID:      userID,
-		Title:       title,
-		Description: description,
-		Prompt:      prompt,
+		UUID:          genUUID(),
+		UserID:        userID,
+		Title:         title,
+		Description:   description,
+		Prompt:        prompt,
+		Tools:         models.JSONStringSlice(tools),
+		ModelConfig:   modelConfig,
+		MaxIterations: maxIterations,
+		Status:        models.AgentStatusEnabled,
+	}
+	if a.MaxIterations == 0 {
+		a.MaxIterations = 5
+	}
+	if a.MaxIterations > 10 {
+		a.MaxIterations = 10
 	}
 	if err := s.db.Create(&a).Error; err != nil {
 		return nil, fmt.Errorf("insert agent: %w", err)
@@ -68,22 +81,26 @@ func (s *AgentStore) Create(userID int64, title, description, prompt string) (*m
 	return &a, nil
 }
 
-// Update modifies an existing agent.
-func (s *AgentStore) Update(id, title, description, prompt string) (*models.Agent, error) {
-	updates := map[string]interface{}{}
-	if title != "" {
-		updates["title"] = title
+// Update modifies an existing agent using a whitelist of allowed fields.
+func (s *AgentStore) Update(id string, updates map[string]interface{}) (*models.Agent, error) {
+	allowed := map[string]bool{
+		"title": true, "intro": true, "description": true, "prompt": true,
+		"tools": true, "model_config": true, "max_iterations": true, "status": true,
 	}
-	if description != "" {
-		updates["intro"] = description
+	filtered := make(map[string]interface{})
+	for k, v := range updates {
+		if allowed[k] {
+			if k == "description" {
+				filtered["intro"] = v
+			} else {
+				filtered[k] = v
+			}
+		}
 	}
-	if prompt != "" {
-		updates["prompt"] = prompt
-	}
-	if len(updates) == 0 {
+	if len(filtered) == 0 {
 		return s.Get(id)
 	}
-	if err := s.db.Model(&models.Agent{}).Where("uuid = ?", id).Updates(updates).Error; err != nil {
+	if err := s.db.Model(&models.Agent{}).Where("uuid = ?", id).Updates(filtered).Error; err != nil {
 		return nil, fmt.Errorf("update agent: %w", err)
 	}
 	return s.Get(id)

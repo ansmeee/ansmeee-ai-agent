@@ -104,9 +104,20 @@ function hideError() {
   document.getElementById('errorMsg').style.display = 'none';
 }
 
-// Check if already logged in.
-if (localStorage.getItem('token')) {
-  window.location.href = '/';
+// Check if already logged in — verify token is valid before redirecting.
+const existingToken = localStorage.getItem('token');
+if (existingToken) {
+  fetch(apiBase + '/auth/me', {
+    headers: { 'Authorization': 'Bearer ' + existingToken }
+  }).then(r => {
+    if (r.ok) {
+      window.location.replace('/');
+    } else {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user_id');
+      localStorage.removeItem('email');
+    }
+  }).catch(() => {});
 }
 
 document.getElementById('password').addEventListener('keydown', e => {
