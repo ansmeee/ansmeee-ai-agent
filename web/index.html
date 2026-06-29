@@ -54,6 +54,33 @@
   aside .session-item:hover .del-btn { visibility: visible; }
   aside .session-item .del-btn:hover { color: #dc2626; }
   aside .empty-history { font-size: 12px; color: var(--text-secondary); padding: 10px; text-align: center; }
+  .sidebar-footer {
+    flex-shrink: 0; border-top: 1px solid var(--border); padding: 10px 14px;
+    display: flex; align-items: center; gap: 10px; position: relative;
+    cursor: pointer; transition: background .1s;
+  }
+  .sidebar-footer:hover { background: var(--bg); }
+  .sidebar-footer .avatar {
+    width: 28px; height: 28px; border-radius: 50%; background: var(--accent);
+    color: #fff; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; flex-shrink: 0;
+  }
+  .sidebar-footer .user-email {
+    flex: 1; min-width: 0; font-size: 12px; color: var(--text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sidebar-footer .dropdown {
+    display: none; position: absolute; bottom: calc(100% + 6px); left: 10px; right: 10px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.1); overflow: hidden; z-index: 50;
+  }
+  .sidebar-footer:hover .dropdown { display: block; }
+  .sidebar-footer .dropdown a, .sidebar-footer .dropdown div {
+    display: block; padding: 9px 14px; font-size: 13px; color: var(--text);
+    text-decoration: none; cursor: pointer; transition: background .1s;
+  }
+  .sidebar-footer .dropdown a:hover, .sidebar-footer .dropdown div:hover { background: var(--bg); }
+  .sidebar-footer .dropdown .logout-item { color: #dc2626; }
   .chat-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 
   /* ——— right chat panel ——— */
@@ -219,6 +246,41 @@
   }
   .modal-btns .btn-cancel { background: var(--surface); }
   .modal-btns .btn-save { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ——— user center modal ——— */
+  #userModal .modal { width: 760px; height: 480px; padding: 0; display: flex; flex-direction: row; overflow: hidden; }
+  #userModal .modal-sidebar {
+    width: 160px; flex-shrink: 0; background: #f8fafc; border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 20px 0;
+  }
+  #userModal .modal-sidebar h3 { font-size: 15px; font-weight: 700; padding: 0 16px 16px; }
+  #userModal .modal-sidebar .nav-btn {
+    font-size: 13px; padding: 9px 16px; border: none; background: none; cursor: pointer;
+    color: var(--text-secondary); font-weight: 500; text-align: left; transition: background .1s;
+  }
+  #userModal .modal-sidebar .nav-btn:hover { background: #eef2ff; color: var(--accent); }
+  #userModal .modal-sidebar .nav-btn.active { background: #eef2ff; color: var(--accent); font-weight: 600; }
+  #userModal .modal-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  #userModal .modal-content { flex: 1; overflow-y: auto; padding: 24px; }
+  #userModal .modal-footer { flex-shrink: 0; padding: 12px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; }
+  #userModal .tab-panel { display: none; }
+  #userModal .tab-panel.active { display: block; }
+  #userModal .form-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+  #userModal .form-group label { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+  #userModal .form-group input { font-size: 13px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; outline: none; }
+  #userModal .form-group input:focus { border-color: var(--accent); }
+  #userModal .form-group .hint { font-size: 11px; color: var(--text-secondary); }
+  #userModal .section-title { font-size: 13px; font-weight: 600; margin: 16px 0 10px; color: var(--text); }
+  #userModal .section-title:first-child { margin-top: 0; }
+  #userModal .save-btn { font-size: 12px; padding: 6px 14px; border-radius: 6px; cursor: pointer; border: none; font-weight: 500; background: var(--accent); color: #fff; margin-top: 4px; }
+  #userModal .save-btn:hover { background: var(--accent-hover); }
+  #userModal .modal-footer .btn-cancel {
+    font-size: 13px; padding: 7px 18px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text); font-weight: 500;
+  }
+  #userModal .modal-footer .btn-cancel:hover { background: var(--bg); }
+  .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #fff; padding: 10px 24px; border-radius: 10px; font-size: 14px; z-index: 200; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
 </style>
 </head>
 <body>
@@ -231,16 +293,6 @@
       <span id="agentName"></span>
       <span id="conversationTitle">新的对话</span>
       <button id="newChatBtn" onclick="newSession()">+ 新会话</button>
-      <div id="userMenu" style="display:flex;align-items:center;gap:8px;">
-        <a href="/login" id="loginBtn" style="text-decoration:none;font-size:13px;color:var(--accent);flex-shrink:0;">登录</a>
-        <div id="userAvatar" style="display:none;position:relative;flex-shrink:0;">
-          <div id="avatarBtn" style="width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;cursor:pointer;"></div>
-          <div id="userDropdown" style="display:none;position:absolute;top:38px;right:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1);min-width:120px;z-index:50;">
-            <a href="/user" style="display:block;padding:8px 14px;font-size:13px;color:var(--text);text-decoration:none;">用户中心</a>
-            <div onclick="logout()" style="display:block;padding:8px 14px;font-size:13px;color:#dc2626;cursor:pointer;">退出登录</div>
-          </div>
-        </div>
-      </div>
       <select id="agentSelect" onchange="onAgentChange()"></select>
     </header>
 
@@ -249,6 +301,14 @@
         <div class="sidebar-header">历史会话</div>
         <div class="session-list" id="sessionList">
           <div class="empty-history">暂无历史会话</div>
+        </div>
+        <div class="sidebar-footer" id="sidebarUser">
+          <div class="avatar" id="sidebarAvatar"></div>
+          <div class="user-email" id="sidebarEmail"></div>
+          <div class="dropdown">
+            <a href="javascript:void(0)" onclick="openUserModal()">个人中心</a>
+            <div class="logout-item" onclick="logout()">退出登录</div>
+          </div>
         </div>
       </aside>
 
@@ -274,6 +334,44 @@
   </div>
 </div>
 
+<!-- User Center Modal -->
+<div class="modal-overlay" id="userModal">
+  <div class="modal">
+    <div class="modal-sidebar">
+      <h3>个人中心</h3>
+      <button class="nav-btn active" data-tab="model" onclick="switchUserTab('model')">模型配置</button>
+      <button class="nav-btn" data-tab="about" onclick="switchUserTab('about')">关于</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-content">
+        <div class="tab-panel active" id="utab-model">
+          <div class="section-title">对话模型</div>
+          <div class="form-group"><label>Model</label><input id="chatModel" placeholder="例如: deepseek-chat"><div class="hint">模型名称，如 deepseek-chat、gpt-4o</div></div>
+          <div class="form-group"><label>Base URL</label><input id="chatBaseURL" placeholder="例如: https://api.deepseek.com"><div class="hint">API 端点地址</div></div>
+          <div class="form-group"><label>Token</label><input id="chatToken" type="password" placeholder="API Token"><div class="hint">API 访问密钥</div></div>
+          <button class="save-btn" onclick="saveModelConfig(1)">保存对话模型</button>
+
+          <div class="section-title">Embedding 模型</div>
+          <div class="form-group"><label>Model</label><input id="embeddingModel" placeholder="例如: text-embedding-v3"><div class="hint">Embedding 模型名称</div></div>
+          <div class="form-group"><label>Base URL</label><input id="embeddingBaseURL" placeholder="例如: https://api.deepseek.com"><div class="hint">API 端点地址</div></div>
+          <div class="form-group"><label>Token</label><input id="embeddingToken" type="password" placeholder="API Token"><div class="hint">API 访问密钥</div></div>
+          <button class="save-btn" onclick="saveModelConfig(2)">保存 Embedding 模型</button>
+        </div>
+        <div class="tab-panel" id="utab-about">
+          <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+            AI Agent 是一个基于 LangChainGo + Gin 的智能助手平台。<br>
+            支持自定义 Agent、会话管理、模型配置等功能。
+          </p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeUserModal()">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
 <script>
 const apiBase = '/api/v1';
 const token = localStorage.getItem('token') || '';
@@ -281,9 +379,10 @@ const userEmail = localStorage.getItem('email') || '';
 
 function updateUserMenu() {
   if (token && userEmail) {
-    document.getElementById('loginBtn').style.display = 'none';
-    document.getElementById('userAvatar').style.display = 'block';
-    document.getElementById('avatarBtn').textContent = userEmail.charAt(0).toUpperCase();
+    document.getElementById('sidebarAvatar').textContent = userEmail.charAt(0).toUpperCase();
+    document.getElementById('sidebarEmail').textContent = userEmail;
+  } else {
+    document.getElementById('sidebarUser').style.display = 'none';
   }
 }
 updateUserMenu();
@@ -292,15 +391,71 @@ if (!token) {
   throw new Error('redirect');
 }
 
-document.getElementById('avatarBtn').addEventListener('click', e => {
-  e.stopPropagation();
-  const dd = document.getElementById('userDropdown');
-  dd.style.display = dd.style.display === 'block' ? 'none' : 'block';
-});
-document.addEventListener('click', () => { document.getElementById('userDropdown').style.display = 'none'; });
 function logout() {
   localStorage.removeItem('token'); localStorage.removeItem('user_id'); localStorage.removeItem('email');
   window.location.href = '/login';
+}
+
+// User center modal
+function openUserModal() {
+  document.getElementById('userModal').classList.add('show');
+  loadModelConfig();
+}
+function closeUserModal() {
+  document.getElementById('userModal').classList.remove('show');
+}
+function switchUserTab(tab) {
+  document.querySelectorAll('#userModal .nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('#userModal .tab-panel').forEach(p => p.classList.toggle('active', p.id === 'utab-' + tab));
+}
+document.getElementById('userModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeUserModal(); });
+
+async function loadModelConfig() {
+  try {
+    const r = await authFetch(apiBase + '/user/model');
+    const d = await r.json();
+    if (d.data) {
+      if (d.data.chat) {
+        document.getElementById('chatModel').value = d.data.chat.model || '';
+        document.getElementById('chatBaseURL').value = d.data.chat.base_url || '';
+        document.getElementById('chatToken').value = d.data.chat.token || '';
+      }
+      if (d.data.embedding) {
+        document.getElementById('embeddingModel').value = d.data.embedding.model || '';
+        document.getElementById('embeddingBaseURL').value = d.data.embedding.base_url || '';
+        document.getElementById('embeddingToken').value = d.data.embedding.token || '';
+      }
+    }
+  } catch(e) {}
+}
+
+async function saveModelConfig(modelType) {
+  let model, base_url, tk;
+  if (modelType === 1) {
+    model = document.getElementById('chatModel').value.trim();
+    base_url = document.getElementById('chatBaseURL').value.trim();
+    tk = document.getElementById('chatToken').value.trim();
+  } else {
+    model = document.getElementById('embeddingModel').value.trim();
+    base_url = document.getElementById('embeddingBaseURL').value.trim();
+    tk = document.getElementById('embeddingToken').value.trim();
+  }
+  if (!model || !tk) { showToast('请填写 Model 和 Token'); return; }
+  try {
+    const r = await authFetch(apiBase + '/user/model', {
+      method: 'POST',
+      body: JSON.stringify({ model_type: modelType, model, base_url, token: tk })
+    });
+    const d = await r.json();
+    showToast(d.code === 0 ? '保存成功' : (d.message || '保存失败'));
+  } catch(e) { showToast('网络错误'); }
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2000);
 }
 
 const authHeaders = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };

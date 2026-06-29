@@ -236,45 +236,6 @@ func TestTrimHistory_KeepPairs(t *testing.T) {
 	}
 }
 
-func TestEmitContentAsChunks(t *testing.T) {
-	e := &Engine{}
-	ch := make(chan StreamEvent, 100)
-
-	e.emitContentAsChunks(ch, "Hello World!")
-
-	var chunks []string
-	close(ch)
-	for evt := range ch {
-		if evt.Type != "chunk" {
-			t.Errorf("unexpected event type: %s", evt.Type)
-		}
-		chunks = append(chunks, evt.Content)
-	}
-
-	if len(chunks) != 1 {
-		t.Errorf("expected 1 chunk, got %d", len(chunks))
-	}
-	if chunks[0] != "Hello World!" {
-		t.Errorf("chunk = %q, want %q", chunks[0], "Hello World!")
-	}
-}
-
-func TestEmitContentAsChunks_Empty(t *testing.T) {
-	e := &Engine{}
-	ch := make(chan StreamEvent, 100)
-
-	e.emitContentAsChunks(ch, "")
-
-	close(ch)
-	count := 0
-	for range ch {
-		count++
-	}
-	if count != 0 {
-		t.Errorf("expected 0 chunks for empty content, got %d", count)
-	}
-}
-
 func TestBuildChatOptions(t *testing.T) {
 	e := &Engine{}
 
@@ -429,7 +390,9 @@ func (te *testableEngine) processStream(ctx context.Context, sessionID, msg stri
 			}
 
 			if len(result.ToolCalls) == 0 {
-				te.emitContentAsChunks(ch, result.Content)
+				if result.Content != "" {
+					ch <- StreamEvent{Type: "chunk", Content: result.Content}
+				}
 				te.mem.AddMessage(ctx, sessionID, memory.Message{
 					Role: "assistant", Content: result.Content,
 				}, userID)
@@ -463,7 +426,9 @@ func (te *testableEngine) processStream(ctx context.Context, sessionID, msg stri
 			ch <- StreamEvent{Type: "error", Error: err}
 			return
 		}
-		te.emitContentAsChunks(ch, result.Content)
+		if result.Content != "" {
+			ch <- StreamEvent{Type: "chunk", Content: result.Content}
+		}
 		te.mem.AddMessage(ctx, sessionID, memory.Message{
 			Role: "assistant", Content: result.Content,
 		}, userID)

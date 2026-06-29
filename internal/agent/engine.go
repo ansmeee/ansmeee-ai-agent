@@ -149,14 +149,20 @@ func (e *Engine) ProcessStream(ctx context.Context, sessionID, userMessage strin
 			ch <- StreamEvent{Type: "thinking", Iteration: iter + 1}
 			e.callback.OnLLMStart(ctx, sessionID)
 
-			result, err := llmProvider.Chat(ctx, messages, filteredTools, chatOpts...)
+			streamed := false
+			result, err := llmProvider.ChatStream(ctx, messages, filteredTools, func(chunk []byte) {
+				ch <- StreamEvent{Type: "chunk", Content: string(chunk)}
+				streamed = true
+			}, chatOpts...)
 			if err != nil {
 				ch <- StreamEvent{Type: "error", Error: err}
 				return
 			}
 
 			if len(result.ToolCalls) == 0 {
-				e.emitContentAsChunks(ch, result.Content)
+				if !streamed && result.Content != "" {
+					ch <- StreamEvent{Type: "chunk", Content: result.Content}
+				}
 				e.saveMessage(ctx, sessionID, memory.Message{
 					Role: "assistant", Content: result.Content,
 				}, userID)
@@ -185,12 +191,18 @@ func (e *Engine) ProcessStream(ctx context.Context, sessionID, userMessage strin
 		}
 
 		ch <- StreamEvent{Type: "thinking", Content: "max iterations reached, generating final answer"}
-		result, err := llmProvider.Chat(ctx, messages, nil, chatOpts...)
+		streamed := false
+		result, err := llmProvider.ChatStream(ctx, messages, nil, func(chunk []byte) {
+			ch <- StreamEvent{Type: "chunk", Content: string(chunk)}
+			streamed = true
+		}, chatOpts...)
 		if err != nil {
 			ch <- StreamEvent{Type: "error", Error: err}
 			return
 		}
-		e.emitContentAsChunks(ch, result.Content)
+		if !streamed && result.Content != "" {
+			ch <- StreamEvent{Type: "chunk", Content: result.Content}
+		}
 		e.saveMessage(ctx, sessionID, memory.Message{
 			Role: "assistant", Content: result.Content,
 		}, userID)
@@ -199,12 +211,6 @@ func (e *Engine) ProcessStream(ctx context.Context, sessionID, userMessage strin
 	}()
 
 	return ch
-}
-
-func (e *Engine) emitContentAsChunks(ch chan<- StreamEvent, content string) {
-	if content != "" {
-		ch <- StreamEvent{Type: "chunk", Content: content}
-	}
 }
 
 func (e *Engine) saveMessage(ctx context.Context, sessionID string, msg memory.Message, userID int64) {

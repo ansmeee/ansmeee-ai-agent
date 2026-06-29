@@ -182,6 +182,56 @@ func toLLMTools(toolList []tools.Tool) []llms.Tool {
 	return result
 }
 
+// ChatStream is like Chat but streams content chunks via onChunk during generation.
+// The final ChatResult is still returned with complete Content and ToolCalls.
+func (p *Provider) ChatStream(ctx context.Context, messages []MessageContent, toolList []tools.Tool, onChunk func(chunk []byte), opts ...ChatOption) (*ChatResult, error) {
+	co := &chatOptions{}
+	for _, o := range opts {
+		o(co)
+	}
+
+	temp := p.cfg.Temperature
+	if co.temperature != nil {
+		temp = *co.temperature
+	}
+	maxTk := p.cfg.MaxTokens
+	if co.maxTokens != nil {
+		maxTk = *co.maxTokens
+	}
+
+	msgs := toLLMMessages(messages)
+	callOpts := []llms.CallOption{
+		llms.WithTemperature(temp),
+		llms.WithMaxTokens(maxTk),
+		llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
+			if onChunk != nil && len(chunk) > 0 {
+				onChunk(chunk)
+			}
+			return nil
+		}),
+	}
+	if co.topP != nil {
+		callOpts = append(callOpts, llms.WithTopP(*co.topP))
+	}
+	if len(toolList) > 0 {
+		callOpts = append(callOpts, llms.WithTools(toLLMTools(toolList)))
+	}
+
+	resp, err := p.model.GenerateContent(ctx, msgs, callOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("generate content: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		return nil, fmt.Errorf("no choices returned from LLM")
+	}
+
+	choice := resp.Choices[0]
+	return &ChatResult{
+		Content:   choice.Content,
+		ToolCalls: choice.ToolCalls,
+	}, nil
+}
+
 // WithOverride creates a new Provider with the given overrides.
 func (p *Provider) WithOverride(model, baseURL, token string) (*Provider, error) {
 	return NewWithOverride(p.cfg, model, baseURL, token)
