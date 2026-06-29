@@ -47,7 +47,7 @@ func (h *AgentHandler) List(c *gin.Context) {
 
 // Get returns a single agent.
 func (h *AgentHandler) Get(c *gin.Context) {
-	a, err := h.store.Get(c.Param("id"))
+	a, err := h.store.Get(c.Param("id"), h.userID(c))
 	if err != nil {
 		response.Fail(c, http.StatusNotFound, response.CodeNotFound, err.Error())
 		return
@@ -86,7 +86,7 @@ func (h *AgentHandler) Update(c *gin.Context) {
 		response.BadRequest(c, "invalid request body")
 		return
 	}
-	a, err := h.store.Update(c.Param("id"), raw)
+	a, err := h.store.Update(c.Param("id"), h.userID(c), raw)
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return
@@ -96,7 +96,7 @@ func (h *AgentHandler) Update(c *gin.Context) {
 
 // Delete removes an agent.
 func (h *AgentHandler) Delete(c *gin.Context) {
-	if err := h.store.Delete(c.Param("id")); err != nil {
+	if err := h.store.Delete(c.Param("id"), h.userID(c)); err != nil {
 		response.InternalError(c, err.Error())
 		return
 	}

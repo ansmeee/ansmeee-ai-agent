@@ -9,8 +9,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-const jwtSecret = "ai-agent-secret-key-change-in-production"
-
 const (
 	CtxUserID    = "user_id"
 	CtxUserUUID  = "user_uuid"
@@ -18,7 +16,8 @@ const (
 )
 
 // JWTAuth validates JWT tokens for protected routes.
-func JWTAuth() gin.HandlerFunc {
+func JWTAuth(secret string) gin.HandlerFunc {
+	secretBytes := []byte(secret)
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
 		if header == "" {
@@ -35,7 +34,7 @@ func JWTAuth() gin.HandlerFunc {
 		}
 
 		token, err := jwt.Parse(parts[1], func(t *jwt.Token) (interface{}, error) {
-			return []byte(jwtSecret), nil
+			return secretBytes, nil
 		})
 		if err != nil || !token.Valid {
 			response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "invalid or expired token")

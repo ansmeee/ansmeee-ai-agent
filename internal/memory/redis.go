@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"ansmeee-ai-agent/internal/config"
@@ -56,7 +57,10 @@ func (r *RedisStore) AddMessage(ctx context.Context, sessionID string, msg Messa
 	pipe := r.client.Pipeline()
 	pipe.RPush(ctx, r.key(sessionID), data)
 	pipe.Expire(ctx, r.key(sessionID), r.ttl)
-	pipe.LTrim(ctx, r.key(sessionID), -int64(r.maxMs), -1)
+	if r.maxMs > 0 {
+		pipe.LTrim(ctx, r.key(sessionID), -int64(r.maxMs), -1)
+	}
+	pipe.Set(ctx, r.key(sessionID)+":user_id", userID, r.ttl)
 
 	_, err = pipe.Exec(ctx)
 	return err
@@ -110,7 +114,16 @@ func (r *RedisStore) ListSessions(ctx context.Context, userID int64, agentID str
 			return nil, fmt.Errorf("redis scan: %w", err)
 		}
 		for _, key := range keys {
+			if strings.HasSuffix(key, ":agent") || strings.HasSuffix(key, ":user_id") {
+				continue
+			}
 			id := key[len(r.prefix):]
+
+			storedUID, _ := r.client.Get(ctx, key+":user_id").Int64()
+			if storedUID != userID {
+				continue
+			}
+
 			storedAgent, _ := r.client.Get(ctx, key+":agent").Result()
 			if agentID != "" && storedAgent != agentID {
 				continue
@@ -139,7 +152,11 @@ func (r *RedisStore) ListSessions(ctx context.Context, userID int64, agentID str
 
 // SetAgent records which agent is used for a session.
 func (r *RedisStore) SetAgent(ctx context.Context, sessionID, agentID string, userID int64) error {
-	return r.client.Set(ctx, r.prefix+sessionID+":agent", agentID, r.ttl).Err()
+	pipe := r.client.Pipeline()
+	pipe.Set(ctx, r.prefix+sessionID+":agent", agentID, r.ttl)
+	pipe.Set(ctx, r.prefix+sessionID+":user_id", userID, r.ttl)
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 // GetAgent returns the agent for a session.

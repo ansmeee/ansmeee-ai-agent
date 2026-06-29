@@ -1,6 +1,8 @@
 server:
   port: 8080
   mode: debug  # debug | release | test
+  jwt_secret: ""  # Leave empty for default; set a strong random string in production
+  cors_origin: "*"  # Restrict to your domain in production, e.g. "https://example.com"
 
 llm:
   provider: deepseek

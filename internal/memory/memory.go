@@ -14,6 +14,7 @@ type entry struct {
 	expiresAt time.Time
 	createdAt time.Time
 	agentID   string
+	userID    int64
 }
 
 // InMemoryStore is an in-memory session store with TTL support.
@@ -62,6 +63,7 @@ func (s *InMemoryStore) AddMessage(ctx context.Context, sessionID string, msg Me
 			messages:  make([]Message, 0, s.maxMs),
 			expiresAt: now.Add(s.ttl),
 			createdAt: now,
+			userID:    userID,
 		}
 		s.data[sessionID] = e
 	} else {
@@ -78,8 +80,8 @@ func (s *InMemoryStore) AddMessage(ctx context.Context, sessionID string, msg Me
 
 // History returns all messages for a session.
 func (s *InMemoryStore) History(ctx context.Context, sessionID string) ([]Message, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	e, ok := s.data[sessionID]
 	if !ok {
@@ -115,6 +117,9 @@ func (s *InMemoryStore) ListSessions(ctx context.Context, userID int64, agentID 
 
 	result := make([]SessionInfo, 0, len(s.data))
 	for id, e := range s.data {
+		if e.userID != userID {
+			continue
+		}
 		if agentID != "" && e.agentID != agentID {
 			continue
 		}
@@ -138,7 +143,14 @@ func (s *InMemoryStore) SetAgent(ctx context.Context, sessionID, agentID string,
 	defer s.mu.Unlock()
 	e, ok := s.data[sessionID]
 	if !ok {
-		return fmt.Errorf("session %q not found", sessionID)
+		now := time.Now()
+		e = &entry{
+			messages:  make([]Message, 0, s.maxMs),
+			expiresAt: now.Add(s.ttl),
+			createdAt: now,
+			userID:    userID,
+		}
+		s.data[sessionID] = e
 	}
 	e.agentID = agentID
 	return nil

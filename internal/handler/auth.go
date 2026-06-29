@@ -15,16 +15,20 @@ import (
 	"gorm.io/gorm"
 )
 
-const jwtSecret = "ai-agent-secret-key-change-in-production"
+const jwtSecretDefault = "ai-agent-secret-key-change-in-production"
 
 // AuthHandler handles user registration and login.
 type AuthHandler struct {
-	db *gorm.DB
+	db        *gorm.DB
+	jwtSecret string
 }
 
 // NewAuthHandler creates a new auth handler.
-func NewAuthHandler(db *gorm.DB) *AuthHandler {
-	return &AuthHandler{db: db}
+func NewAuthHandler(db *gorm.DB, jwtSecret string) *AuthHandler {
+	if jwtSecret == "" {
+		jwtSecret = jwtSecretDefault
+	}
+	return &AuthHandler{db: db, jwtSecret: jwtSecret}
 }
 
 type registerRequest struct {
@@ -68,7 +72,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	token, err := generateJWT(user.ID, user.UUID)
+	token, err := h.generateJWT(user.ID, user.UUID)
 	if err != nil {
 		response.InternalError(c, "failed to generate token")
 		return
@@ -109,7 +113,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	token, err := generateJWT(user.ID, user.UUID)
+	token, err := h.generateJWT(user.ID, user.UUID)
 	if err != nil {
 		response.InternalError(c, "failed to generate token")
 		return
@@ -132,7 +136,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	})
 }
 
-func generateJWT(userID int64, userUUID string) (string, error) {
+func (h *AuthHandler) generateJWT(userID int64, userUUID string) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id":   userID,
 		"user_uuid": userUUID,
@@ -140,5 +144,5 @@ func generateJWT(userID int64, userUUID string) (string, error) {
 		"iat":       time.Now().Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(jwtSecret))
+	return token.SignedString([]byte(h.jwtSecret))
 }

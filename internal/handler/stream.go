@@ -53,11 +53,11 @@ func NewStreamHandler(engine *agent.Engine, mem memory.SessionStore, agentStore 
 	return &StreamHandler{engine: engine, mem: mem, agentStore: agentStore, modelConfigStore: modelConfigStore}
 }
 
-func (h *StreamHandler) resolveAgentConfig(agentID string) (*agent.AgentConfig, error) {
+func (h *StreamHandler) resolveAgentConfig(agentID string, userID int64) (*agent.AgentConfig, error) {
 	if agentID == "" || h.agentStore == nil {
 		return nil, nil
 	}
-	a, err := h.agentStore.Get(agentID)
+	a, err := h.agentStore.Get(agentID, userID)
 	if err != nil {
 		return nil, nil
 	}
@@ -111,7 +111,7 @@ func (h *StreamHandler) Handle(c *gin.Context) {
 	}
 
 	// Resolve agent config (includes status check).
-	agentCfg, err := h.resolveAgentConfig(req.AgentID)
+	agentCfg, err := h.resolveAgentConfig(req.AgentID, userID)
 	if err != nil {
 		writeSSEJSON(c.Writer, flusher, "error", sseErrorData{Message: err.Error()})
 		return

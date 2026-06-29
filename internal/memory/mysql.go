@@ -158,11 +158,7 @@ func (s *MySQLStore) GetAgent(ctx context.Context, sessionID string) (string, er
 	return sess.AgentUUID, nil
 }
 
-// Close releases the database connection.
+// Close is a no-op; the shared DB connection is managed by main.go.
 func (s *MySQLStore) Close() error {
-	sqlDB, _ := s.db.DB()
-	if sqlDB != nil {
-		return sqlDB.Close()
-	}
 	return nil
 }

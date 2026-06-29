@@ -32,14 +32,23 @@ func (h *ModelConfigHandler) Get(c *gin.Context) {
 		"embedding": nil,
 	}
 	for _, cfg := range cfgs {
+		masked := *cfg
+		masked.Token = maskToken(masked.Token)
 		switch cfg.ModelType {
 		case models.ModelTypeChat:
-			result["chat"] = cfg
+			result["chat"] = &masked
 		case models.ModelTypeEmbedding:
-			result["embedding"] = cfg
+			result["embedding"] = &masked
 		}
 	}
 	response.OK(c, result)
+}
+
+func maskToken(token string) string {
+	if len(token) < 10 {
+		return "****"
+	}
+	return token[:4] + "****" + token[len(token)-4:]
 }
 
 type modelConfigRequest struct {

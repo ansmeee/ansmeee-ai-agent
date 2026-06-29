@@ -45,10 +45,10 @@ func (s *AgentStore) List(userID int64) []*models.Agent {
 	return agents
 }
 
-// Get returns a single agent by UUID.
-func (s *AgentStore) Get(id string) (*models.Agent, error) {
+// Get returns a single agent by UUID, scoped to a user.
+func (s *AgentStore) Get(id string, userID int64) (*models.Agent, error) {
 	var a models.Agent
-	if err := s.db.Where("uuid = ?", id).First(&a).Error; err != nil {
+	if err := s.db.Where("uuid = ? AND user_id = ?", id, userID).First(&a).Error; err != nil {
 		return nil, fmt.Errorf("agent %q not found", id)
 	}
 	return &a, nil
@@ -82,9 +82,9 @@ func (s *AgentStore) Create(userID int64, title, description, prompt string,
 }
 
 // Update modifies an existing agent using a whitelist of allowed fields.
-func (s *AgentStore) Update(id string, updates map[string]interface{}) (*models.Agent, error) {
+func (s *AgentStore) Update(id string, userID int64, updates map[string]interface{}) (*models.Agent, error) {
 	allowed := map[string]bool{
-		"title": true, "intro": true, "description": true, "prompt": true,
+		"title": true, "description": true, "prompt": true,
 		"tools": true, "model_config": true, "max_iterations": true, "status": true,
 	}
 	filtered := make(map[string]interface{})
@@ -98,17 +98,17 @@ func (s *AgentStore) Update(id string, updates map[string]interface{}) (*models.
 		}
 	}
 	if len(filtered) == 0 {
-		return s.Get(id)
+		return s.Get(id, userID)
 	}
-	if err := s.db.Model(&models.Agent{}).Where("uuid = ?", id).Updates(filtered).Error; err != nil {
+	if err := s.db.Model(&models.Agent{}).Where("uuid = ? AND user_id = ?", id, userID).Updates(filtered).Error; err != nil {
 		return nil, fmt.Errorf("update agent: %w", err)
 	}
-	return s.Get(id)
+	return s.Get(id, userID)
 }
 
-// Delete removes an agent by UUID.
-func (s *AgentStore) Delete(id string) error {
-	result := s.db.Where("uuid = ?", id).Delete(&models.Agent{})
+// Delete removes an agent by UUID, scoped to a user.
+func (s *AgentStore) Delete(id string, userID int64) error {
+	result := s.db.Where("uuid = ? AND user_id = ?", id, userID).Delete(&models.Agent{})
 	if result.Error != nil {
 		return fmt.Errorf("delete agent: %w", result.Error)
 	}

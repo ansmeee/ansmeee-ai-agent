@@ -23,7 +23,7 @@ func Setup(cfg *config.Config, logger *zap.Logger, mem memory.SessionStore, engi
 	r.Use(middleware.Recovery(logger))
 	r.Use(middleware.RequestID())
 	r.Use(middleware.Logger(logger))
-	r.Use(middleware.CORS())
+	r.Use(middleware.CORS(cfg.Server.CORSOrigin))
 
 	// Handlers.
 	chatHandler := handler.NewChatHandler(mem, agentStore)
@@ -31,7 +31,7 @@ func Setup(cfg *config.Config, logger *zap.Logger, mem memory.SessionStore, engi
 	toolHandler := handler.NewToolHandler(registry)
 	agentHandler := handler.NewAgentHandler(agentStore)
 	modelConfigHandler := handler.NewModelConfigHandler(modelConfigStore)
-	authHandler := handler.NewAuthHandler(db)
+	authHandler := handler.NewAuthHandler(db, cfg.Server.JWTSecret)
 
 	// Serve frontend.
 	r.StaticFile("/", "./web/agents.html")
@@ -47,7 +47,7 @@ func Setup(cfg *config.Config, logger *zap.Logger, mem memory.SessionStore, engi
 
 	// API routes (JWT protected).
 	v1 := r.Group("/api/v1")
-	v1.Use(middleware.JWTAuth())
+	v1.Use(middleware.JWTAuth(cfg.Server.JWTSecret))
 	{
 		v1.GET("/auth/me", authHandler.Me)
 		v1.POST("/chat/stream", streamHandler.Handle)

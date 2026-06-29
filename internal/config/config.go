@@ -22,8 +22,10 @@ type Config struct {
 
 // ServerConfig is the HTTP server configuration.
 type ServerConfig struct {
-	Port int    `mapstructure:"port"`
-	Mode string `mapstructure:"mode"`
+	Port       int    `mapstructure:"port"`
+	Mode       string `mapstructure:"mode"`
+	JWTSecret  string `mapstructure:"jwt_secret"`
+	CORSOrigin string `mapstructure:"cors_origin"`
 }
 
 // LLMConfig is the LLM provider configuration.
@@ -138,6 +140,12 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Server.Mode == "" {
 		c.Server.Mode = "debug"
+	}
+	if c.Server.JWTSecret == "" {
+		c.Server.JWTSecret = "ai-agent-secret-key-change-in-production"
+	}
+	if c.Server.CORSOrigin == "" {
+		c.Server.CORSOrigin = "*"
 	}
 	if c.LLM.Temperature == 0 {
 		c.LLM.Temperature = 0.7
