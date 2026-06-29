@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"io"
 	"time"
 
 	"go.uber.org/zap"
@@ -13,9 +12,8 @@ import (
 type contextKey string
 
 const (
-	keyTraceID    contextKey = "trace_id"
-	keySpanID     contextKey = "span_id"
-	headerTraceID            = "X-Trace-ID"
+	keyTraceID contextKey = "trace_id"
+	keySpanID  contextKey = "span_id"
 )
 
 // Trace holds trace identifiers.
@@ -85,12 +83,6 @@ func FromContext(ctx context.Context) Trace {
 	traceID, _ := ctx.Value(keyTraceID).(string)
 	spanID, _ := ctx.Value(keySpanID).(string)
 	return Trace{TraceID: traceID, SpanID: spanID}
-}
-
-// FromHeader extracts trace from HTTP header or generates a new one.
-func FromHeader(r io.Reader) Trace {
-	// If we had http.Header, we'd read the header. For now, generate new.
-	return NewTrace()
 }
 
 // ZapFields returns zap fields for the current trace context.

@@ -251,33 +251,27 @@ func TestEmitContentAsChunks(t *testing.T) {
 		chunks = append(chunks, evt.Content)
 	}
 
-	joined := strings.Join(chunks, "")
-	if joined != "Hello World!" {
-		t.Errorf("joined chunks = %q, want %q", joined, "Hello World!")
+	if len(chunks) != 1 {
+		t.Errorf("expected 1 chunk, got %d", len(chunks))
 	}
-
-	for _, c := range chunks {
-		if len([]rune(c)) > 4 {
-			t.Errorf("chunk %q exceeds 4 runes", c)
-		}
+	if chunks[0] != "Hello World!" {
+		t.Errorf("chunk = %q, want %q", chunks[0], "Hello World!")
 	}
 }
 
-func TestEmitContentAsChunks_Unicode(t *testing.T) {
+func TestEmitContentAsChunks_Empty(t *testing.T) {
 	e := &Engine{}
 	ch := make(chan StreamEvent, 100)
 
-	e.emitContentAsChunks(ch, "你好世界测试")
+	e.emitContentAsChunks(ch, "")
 
-	var chunks []string
 	close(ch)
-	for evt := range ch {
-		chunks = append(chunks, evt.Content)
+	count := 0
+	for range ch {
+		count++
 	}
-
-	joined := strings.Join(chunks, "")
-	if joined != "你好世界测试" {
-		t.Errorf("joined = %q, want 你好世界测试", joined)
+	if count != 0 {
+		t.Errorf("expected 0 chunks for empty content, got %d", count)
 	}
 }
 

@@ -1,12 +1,16 @@
 package agent
 
 import (
+	"errors"
 	"fmt"
 
 	"ansmeee-ai-agent/internal/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
+
+// ErrAgentNotFound is returned when an agent does not exist.
+var ErrAgentNotFound = errors.New("agent not found")
 
 // AgentStore persists agent configurations in MySQL with master/slave via GORM.
 type AgentStore struct {
@@ -49,7 +53,10 @@ func (s *AgentStore) List(userID int64) []*models.Agent {
 func (s *AgentStore) Get(id string, userID int64) (*models.Agent, error) {
 	var a models.Agent
 	if err := s.db.Where("uuid = ? AND user_id = ?", id, userID).First(&a).Error; err != nil {
-		return nil, fmt.Errorf("agent %q not found", id)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrAgentNotFound
+		}
+		return nil, fmt.Errorf("query agent: %w", err)
 	}
 	return &a, nil
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"ansmeee-ai-agent/internal/config"
+	internaltool "ansmeee-ai-agent/internal/tool"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
 	"github.com/tmc/langchaingo/tools"
@@ -118,37 +119,6 @@ func (p *Provider) Chat(ctx context.Context, messages []MessageContent, toolList
 	}, nil
 }
 
-// StreamChat sends messages and returns a streaming channel.
-func (p *Provider) StreamChat(ctx context.Context, messages []MessageContent) (<-chan string, <-chan error) {
-	textCh := make(chan string, 10)
-	errCh := make(chan error, 1)
-
-	msgs := toLLMMessages(messages)
-
-	go func() {
-		defer close(textCh)
-		defer close(errCh)
-
-		_, err := p.model.GenerateContent(ctx, msgs,
-			llms.WithTemperature(p.cfg.Temperature),
-			llms.WithMaxTokens(p.cfg.MaxTokens),
-			llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
-				select {
-				case textCh <- string(chunk):
-				case <-ctx.Done():
-					return ctx.Err()
-				}
-				return nil
-			}),
-		)
-		if err != nil {
-			errCh <- err
-		}
-	}()
-
-	return textCh, errCh
-}
-
 // MessageContent is an internal message type.
 type MessageContent struct {
 	Role         Role
@@ -167,12 +137,6 @@ const (
 	RoleAssistant Role = "ai"
 	RoleTool      Role = "tool"
 )
-
-// ToolWithSchema extends tools.Tool with parameter schema support.
-type ToolWithSchema interface {
-	tools.Tool
-	Parameters() map[string]any
-}
 
 func toLLMMessages(messages []MessageContent) []llms.MessageContent {
 	result := make([]llms.MessageContent, len(messages))
@@ -207,7 +171,7 @@ func toLLMTools(toolList []tools.Tool) []llms.Tool {
 			Name:        t.Name(),
 			Description: t.Description(),
 		}
-		if ts, ok := t.(ToolWithSchema); ok {
+		if ts, ok := t.(internaltool.ToolWithSchema); ok {
 			fd.Parameters = ts.Parameters()
 		}
 		result[i] = llms.Tool{

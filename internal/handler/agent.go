@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"ansmeee-ai-agent/internal/agent"
@@ -49,7 +50,11 @@ func (h *AgentHandler) List(c *gin.Context) {
 func (h *AgentHandler) Get(c *gin.Context) {
 	a, err := h.store.Get(c.Param("id"), h.userID(c))
 	if err != nil {
-		response.Fail(c, http.StatusNotFound, response.CodeNotFound, err.Error())
+		if errors.Is(err, agent.ErrAgentNotFound) {
+			response.Fail(c, http.StatusNotFound, response.CodeNotFound, "agent not found")
+		} else {
+			response.InternalError(c, err.Error())
+		}
 		return
 	}
 	response.OK(c, a)

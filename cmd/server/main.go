@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"ansmeee-ai-agent/internal/agent"
 	"ansmeee-ai-agent/internal/config"
@@ -99,9 +102,14 @@ func main() {
 	r := router.Setup(cfg, logger, sessionStore, engine, reg, agentStore, modelConfigStore, gormDB)
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: r,
+	}
+
 	go func() {
 		logger.Info("listening", zap.String("addr", addr))
-		if err := r.Run(addr); err != nil {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("server error", zap.Error(err))
 		}
 	}()
@@ -111,6 +119,13 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
 	logger.Info("shutting down", zap.String("signal", sig.String()))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Error("server shutdown error", zap.Error(err))
+	}
+	logger.Info("server stopped")
 }
 
 func openGORM(cfg *config.Config) (*gorm.DB, error) {

@@ -15,6 +15,7 @@ import (
 	"ansmeee-ai-agent/internal/tracing"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/tools"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -156,7 +157,7 @@ func (e *Engine) ProcessStream(ctx context.Context, sessionID, userMessage strin
 
 			if len(result.ToolCalls) == 0 {
 				e.emitContentAsChunks(ch, result.Content)
-				e.mem.AddMessage(ctx, sessionID, memory.Message{
+				e.saveMessage(ctx, sessionID, memory.Message{
 					Role: "assistant", Content: result.Content,
 				}, userID)
 				e.callback.OnLLMEnd(ctx, sessionID, 0, 0)
@@ -168,7 +169,7 @@ func (e *Engine) ProcessStream(ctx context.Context, sessionID, userMessage strin
 				Role:    "assistant_tool_call",
 				Content: buildToolCallJSON(result.ToolCalls),
 			}
-			e.mem.AddMessage(ctx, sessionID, toolCallMsg, userID)
+			e.saveMessage(ctx, sessionID, toolCallMsg, userID)
 			messages = append(messages, toolCallToLLMMessage(result))
 
 			if parallelToolCalls && len(result.ToolCalls) > 1 {
@@ -190,7 +191,7 @@ func (e *Engine) ProcessStream(ctx context.Context, sessionID, userMessage strin
 			return
 		}
 		e.emitContentAsChunks(ch, result.Content)
-		e.mem.AddMessage(ctx, sessionID, memory.Message{
+		e.saveMessage(ctx, sessionID, memory.Message{
 			Role: "assistant", Content: result.Content,
 		}, userID)
 		e.callback.OnLLMEnd(ctx, sessionID, 0, 0)
@@ -201,14 +202,18 @@ func (e *Engine) ProcessStream(ctx context.Context, sessionID, userMessage strin
 }
 
 func (e *Engine) emitContentAsChunks(ch chan<- StreamEvent, content string) {
-	const chunkSize = 4
-	runes := []rune(content)
-	for i := 0; i < len(runes); i += chunkSize {
-		end := i + chunkSize
-		if end > len(runes) {
-			end = len(runes)
-		}
-		ch <- StreamEvent{Type: "chunk", Content: string(runes[i:end])}
+	if content != "" {
+		ch <- StreamEvent{Type: "chunk", Content: content}
+	}
+}
+
+func (e *Engine) saveMessage(ctx context.Context, sessionID string, msg memory.Message, userID int64) {
+	if err := e.mem.AddMessage(ctx, sessionID, msg, userID); err != nil {
+		e.callback.Logger.Warn("failed to save message",
+			zap.String("session", sessionID),
+			zap.String("role", msg.Role),
+			zap.Error(err),
+		)
 	}
 }
 
@@ -316,7 +321,7 @@ func (e *Engine) executeAndEmitTool(ctx context.Context, ch chan<- StreamEvent, 
 		ToolName: name, Result: resultStr, Success: success,
 	}
 
-	e.mem.AddMessage(ctx, sessionID, memory.Message{
+	e.saveMessage(ctx, sessionID, memory.Message{
 		Role:    "tool",
 		Content: buildToolResultJSON(tc.ID, name, resultStr),
 	}, userID)
@@ -389,7 +394,7 @@ func (e *Engine) executeToolsConcurrently(
 		}
 		msgs = append(msgs, r.Message)
 
-		e.mem.AddMessage(ctx, sessionID, memory.Message{
+		e.saveMessage(ctx, sessionID, memory.Message{
 			Role:    "tool",
 			Content: buildToolResultJSON(r.CallID, r.Name, r.Output),
 		}, userID)

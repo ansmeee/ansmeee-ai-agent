@@ -13,3 +13,4 @@ vendor/
 .DS_Store
 __debug_bin*
 .idea
+configs/config.yaml

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -59,7 +60,10 @@ func (h *StreamHandler) resolveAgentConfig(agentID string, userID int64) (*agent
 	}
 	a, err := h.agentStore.Get(agentID, userID)
 	if err != nil {
-		return nil, nil
+		if errors.Is(err, agent.ErrAgentNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("resolve agent: %w", err)
 	}
 	if a.Status == models.AgentStatusDisabled {
 		return nil, fmt.Errorf("agent %q is disabled", agentID)
